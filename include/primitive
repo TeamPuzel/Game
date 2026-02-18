@@ -1,0 +1,5 @@
+#pragma once
+
+#include "../src/primitive/primitive.hpp"
+#include "../src/primitive/fixed.hpp"
+#include "../src/primitive/box.hpp"

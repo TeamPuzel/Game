@@ -1,0 +1,14 @@
+{
+    "format_on_save": "off",
+    "formatter": {
+        "external": {
+            "command": "clang-format",
+            "arguments": ["--style=file", "--assume-filename={buffer_path}"]
+        }
+    },
+    "languages": {
+        "CMake": {
+            "language_servers": []
+        }
+    }
+}
