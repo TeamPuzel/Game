@@ -582,11 +582,27 @@ namespace rt {
         SdlIo io;
         Io::unsafe_push_threadlocal_io(&io);
 
+        // Set up the proper, esoteric RAII cleanup in case of uncaught exceptions.
+        // I don't feel like documenting this nonsense, but this is somehow the cleanest way to do this
+        // until std::scope_exit is implemented >:(
+        // Alternatively one could make all the code atrocious by wrapping SDL pointers in unique pointers
+        // with deleters but that's rather unreadable.
+        ScopeExit scope_exit {
+            [=] {
+                Io::unsafe_pop_threadlocal_io();
+                SDL_DestroyTexture(texture);
+                SDL_DestroyRenderer(renderer);
+                SDL_DestroyWindow(window);
+                SDL_Quit();
+                is_running.store(false);
+            }
+        };
+
         game.init(io);
 
         SDL_Event event;
         usize frame = 0;
-        bool perf_overlay = false;
+        bool perf_overlay = true;
         bool heuristic_rate_lock = true;
         auto target = draw::Image(width / scale, height / scale);
         auto input = rt::input();
@@ -680,13 +696,6 @@ namespace rt {
             frame += 1;
         }
     end:
-
-        Io::unsafe_pop_threadlocal_io();
-        SDL_DestroyTexture(texture);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        is_running.store(false);
     }
 
     /// Runs a game in the environment.

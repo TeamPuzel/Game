@@ -53,7 +53,7 @@ static_assert(sizeof(usize) == sizeof(void*));
 static_assert(sizeof(isize) == sizeof(void*));
 
 // This is required by C++20, however it technically isn't in prior versions.
-// Since this code has to be ported back to C++17 assert that we're not using a weird compiler.
+// Since this is C++ after all, best assert that we're not using a weird compiler, just in case.
 static_assert(-4 >> 1 == -2, ">> doesn't do sign extension");
 
 // C++ does not define the representation of signed primitives either.
@@ -68,3 +68,19 @@ namespace math {
         return (lhs % rhs + rhs) % rhs;
     }
 }
+
+template <typename Fn> class ScopeExit final {
+    Fn fn;
+
+  public:
+    constexpr ScopeExit(Fn fn) noexcept : fn(std::move(fn)) {}
+
+    constexpr ScopeExit(ScopeExit const&) noexcept = delete;
+    constexpr ScopeExit(ScopeExit&&) noexcept = delete;
+    constexpr ScopeExit& operator=(ScopeExit const&) noexcept = delete;
+    constexpr ScopeExit& operator=(ScopeExit&&) noexcept = delete;
+
+    constexpr ~ScopeExit() {
+        fn();
+    }
+};
