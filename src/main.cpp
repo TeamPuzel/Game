@@ -27,5 +27,5 @@ class Game final {
 
 auto main() -> i32 {
     Game instance;
-    rt::run(instance, "Game", 800, 600, 4);
+    rt::run(instance, "Game", 800, 600, 2);
 }

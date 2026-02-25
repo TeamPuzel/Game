@@ -615,7 +615,7 @@ namespace rt {
             // our own pixel scale by the display scale.
             // Effectively the game is always scaled twice on high density displays which will
             // give consistent sizing between devices.
-            i32 w, h; SDL_GetWindowSizeInPixels(window, &w, &h);
+            i32 w, h; SDL_GetWindowSize(window, &w, &h);
             resize_texture(w / scale, h / scale);
             target.resize(w / scale, h / scale);
         };
