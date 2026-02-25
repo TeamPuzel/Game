@@ -149,7 +149,7 @@ namespace draw {
             return content
                 | std::views::split('\n')
                 | std::views::transform([](auto&& r) {
-                    if (r.begin() == r.end()) return {}; // Iterating an exhausted iterator makes STL assertions sad.
+                    if (r.begin() == r.end()) return StringView(); // Iterating an exhausted iterator makes STL assertions sad.
                     return StringView(&*r.begin(), usize(std::ranges::distance(r)));
                 });
         }
