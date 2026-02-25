@@ -15,6 +15,7 @@
 #include <chrono>
 #include <numeric>
 #include <SDL3/SDL.h>
+#include "selector.hpp"
 
 /// An implemenation of Io purely in terms of SDL3. This is very convenient because we don't need
 /// to depend on the standard library or the operating system in SDL3 based projects.
@@ -503,6 +504,8 @@ namespace rt {
     /// A game cannot run itself, it is run by the platform it's on
     /// and can be run in many ways, this is just one implementation.
     static void run(Instance auto& game, char const* title, i32 width, i32 height, i32 scale) {
+        selector::unsafe_set_self(); // Bind the central selector runtime.
+
         static std::atomic<bool> is_running = false;
 
         if (is_running.load()) {
@@ -587,15 +590,13 @@ namespace rt {
         // until std::scope_exit is implemented >:(
         // Alternatively one could make all the code atrocious by wrapping SDL pointers in unique pointers
         // with deleters but that's rather unreadable.
-        ScopeExit scope_exit {
-            [=] {
-                Io::unsafe_pop_threadlocal_io();
-                SDL_DestroyTexture(texture);
-                SDL_DestroyRenderer(renderer);
-                SDL_DestroyWindow(window);
-                SDL_Quit();
-                is_running.store(false);
-            }
+        ScopeExit scope_exit = [=] {
+            Io::unsafe_pop_threadlocal_io();
+            SDL_DestroyTexture(texture);
+            SDL_DestroyRenderer(renderer);
+            SDL_DestroyWindow(window);
+            SDL_Quit();
+            is_running.store(false);
         };
 
         game.init(io);
@@ -710,11 +711,17 @@ namespace rt {
     }
 
     template <typename F> void run_io(F fn) requires requires (F fn, Io& io) { fn(io); } {
+        selector::unsafe_set_self(); // Initialize the central selector runtime.
+
         SDL_Init(0);
         SdlIo io;
         Io::unsafe_push_threadlocal_io(&io);
+
+        ScopeExit scope_exit = [] {
+            Io::unsafe_pop_threadlocal_io();
+            SDL_Quit();
+        };
+
         fn(io);
-        Io::unsafe_pop_threadlocal_io();
-        SDL_Quit();
     }
 }

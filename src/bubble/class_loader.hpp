@@ -5,9 +5,9 @@
 #pragma once
 #include <rt>
 #include <unordered_map>
-#include "dynobject.hpp"
+#include "object.hpp"
 
-namespace sonic::class_loader {
+namespace bubble::class_loader {
     static bool SWAPPED_REGISTRY = false;
     static std::unordered_map<std::string, Io::DynamicLibrary> REGISTRY_0;
     static std::unordered_map<std::string, Io::DynamicLibrary> REGISTRY_1;
@@ -33,9 +33,9 @@ namespace sonic::class_loader {
         Stub<ObjectDeserializer> deserializer { nullptr };
 
         const auto fill = [&] (Io::DynamicLibrary const& obj) {
-            rebuilder = (decltype(rebuilder)) obj.symbol("__sonic_object_rebuild");
-            serializer = (decltype(serializer)) obj.symbol("__sonic_object_serialize");
-            deserializer = (decltype(deserializer)) obj.symbol("__sonic_object_deserialize");
+            rebuilder = (decltype(rebuilder)) obj.symbol("__game_object_rebuild");
+            serializer = (decltype(serializer)) obj.symbol("__game_object_serialize");
+            deserializer = (decltype(deserializer)) obj.symbol("__game_object_deserialize");
         };
 
         if (const auto it = reg.find(library_path.str()); it != reg.end()) {

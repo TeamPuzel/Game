@@ -200,6 +200,22 @@ namespace io {
         constexpr auto f32() noexcept(NOEXCEPT_READABLE) -> ::f32 { return std::bit_cast<::f32>(read<::u32>()); }
         constexpr auto f64() noexcept(NOEXCEPT_READABLE) -> ::f64 { return std::bit_cast<::f64>(read<::u64>()); }
 
+        /// Assume the current position to be a C string.
+        constexpr auto cstr() noexcept(NOEXCEPT_READABLE) -> std::string {
+            std::string out;
+            while (const char next = u8()) out.push_back(next);
+            return out; // rvo
+        }
+
+        /// Assume the current position to be a C string in a fixed buffer.
+        /// Returns the C string and skips over the buffer.
+        constexpr auto cstr(usize bufsize) noexcept(NOEXCEPT_READABLE) -> std::string {
+            std::string out;
+            while (const char next = u8()) out.push_back(next);
+            skip(bufsize - out.size() - 1);
+            return out; // rvo
+        }
+
         template <std::floating_point T> constexpr auto read() noexcept(NOEXCEPT_READABLE) -> T {
             if constexpr (std::same_as<T, ::f32>) {
                 return f32();

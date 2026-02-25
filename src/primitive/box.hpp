@@ -26,12 +26,14 @@ template <typename T> class Box final {
     Box(Box const&) = delete;
     auto operator=(Box const&) -> Box& = delete;
 
-    template <typename U, std::enable_if_t<std::is_convertible_v<U*, T*>, int> = 0>
+    template <typename U>
+    requires std::is_convertible_v<U*, T*>
     Box(Box<U>&& existing) noexcept : inner(existing.inner) {
         existing.inner = nullptr;
     }
 
-    template <typename U, std::enable_if_t<std::is_convertible_v<U*, T*>, int> = 0>
+    template <typename U>
+    requires std::is_convertible_v<U*, T*>
     auto operator=(Box<U>&& existing) noexcept -> Box& {
         if ((void*)this != (void*)&existing) {
             delete this->inner;
@@ -44,13 +46,6 @@ template <typename T> class Box final {
     ~Box() noexcept {
         delete this->inner; // Deleting a nullptr is sound.
     }
-
-    // // Handle variance.
-    // template <typename U, std::enable_if_t<std::is_convertible_v<T*, U*>, int> = 0> operator box<U>() && noexcept {
-    //     auto base_ptr = this->inner;
-    //     this->inner = nullptr;
-    //     return box(base_ptr);
-    // }
 
     auto operator->() const noexcept [[clang::lifetimebound]] -> T* {
         return this->inner;

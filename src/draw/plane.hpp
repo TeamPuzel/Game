@@ -475,14 +475,14 @@ namespace draw {
 
     template <Plane T> struct Grid final {
         T inner;
-        i32 item_width, item_height;
+        i32 tile_width, tile_height;
 
       public:
-        constexpr explicit Grid(T inner, i32 item_width, i32 item_height) noexcept
-            : inner(inner), item_width(item_width), item_height(item_height) {}
+        constexpr explicit Grid(T inner, i32 tile_width, i32 tile_height) noexcept
+            : inner(inner), tile_width(tile_width), tile_height(tile_height) {}
 
         constexpr auto tile(i32 x, i32 y) const noexcept -> Slice<T> {
-            return Slice(inner, x * item_width, y * item_height, item_width, item_height);
+            return Slice(inner, x * tile_width, y * tile_height, tile_width, tile_height);
         }
     };
 
@@ -496,10 +496,10 @@ namespace draw {
         };
 
         struct Grid final {
-            i32 item_width, item_height;
+            i32 tile_width, tile_height;
 
             template <Plane T> constexpr auto operator()(T inner) const noexcept -> draw::Grid<T> {
-                return draw::Grid<T>(inner, item_width, item_height);
+                return draw::Grid<T>(inner, tile_width, tile_height);
             }
         };
 
@@ -548,8 +548,8 @@ namespace draw {
     }
 
     /// Creates a grid which slices out tiles of provided size.
-    constexpr adapt::Grid grid(i32 item_width, i32 item_height) noexcept {
-        return adapt::Grid { item_width, item_height };
+    constexpr adapt::Grid grid(i32 tile_width, i32 tile_height) noexcept {
+        return adapt::Grid { tile_width, tile_height };
     }
 
     /// Similar to the slice shift but wraps the type in a slice first.

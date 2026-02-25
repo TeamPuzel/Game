@@ -6,7 +6,7 @@
 #include <primitive>
 #include <type_traits>
 
-namespace sonic {
+namespace bubble {
     /// A simple animation system which scrolls through and loops in a range.
     ///
     /// The speed for the next iteration can be adjusted as the current iteration plays which can

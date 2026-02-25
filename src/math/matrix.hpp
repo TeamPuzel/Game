@@ -4,6 +4,11 @@
 #include <primitive>
 
 namespace math {
+    template <typename Self> concept numeric =
+        std::integral<Self> or
+        std::floating_point<Self> or
+        std::same_as<Self, fixed>;
+
     /// A row-major combined matrix and vector type.
     ///
     /// Note that the row-major design means you multiply from left to right and vectors are horizontal.
@@ -13,7 +18,9 @@ namespace math {
     /// Generally you need not worry about remembering that the width is the primary vector size.
     ///
     /// The matrix provides it's dimensions as constants and the element type through `Matrix::Element`.
-    template <std::floating_point T, const usize W, const usize H> requires (W > 0 and H > 0) class Matrix final {
+    ///
+    /// TODO: This type sort of assumes floats in places so it needs more work now that it allows more element types.
+    template <numeric T, const usize W, const usize H> requires (W > 0 and H > 0) class Matrix final {
         std::array<T, W * H> data;
 
       public:
@@ -21,7 +28,7 @@ namespace math {
         static constexpr auto height = H;
         using Element = T;
 
-        template <std::floating_point U, const usize W2, const usize H2> requires (W2 > 0 and H2 > 0) friend class Matrix;
+        template <numeric U, const usize W2, const usize H2> requires (W2 > 0 and H2 > 0) friend class Matrix;
 
         constexpr auto operator [] (usize x, usize y) -> Element& { return data[x + y * W]; }
         constexpr auto operator [] (usize x, usize y) const -> Element const& { return data[x + y * W]; }
@@ -250,6 +257,15 @@ namespace math {
         }
 
         /// Creates a translation matrix.
+        static constexpr auto translation(Element x, Element y) -> Matrix requires (W == 3 and H == 3) {
+            return Matrix({
+                { 1, 0, 0 },
+                { 0, 1, 0 },
+                { x, y, 1 }
+            });
+        }
+
+        /// Creates a translation matrix.
         static constexpr auto translation(Element x, Element y, Element z) -> Matrix requires (W == 4 and H == 4) {
             return Matrix({
                 { 1, 0, 0, 0 },
@@ -425,11 +441,11 @@ namespace math {
     };
 
     /// A vector type, an alias of a matrix.
-    template <std::floating_point T, const usize LENGTH> using Vector = Matrix<T, LENGTH, 1>;
+    template <numeric T, const usize LENGTH> using Vector = Matrix<T, LENGTH, 1>;
 
-    template <std::floating_point... T> Matrix(T...) -> Matrix<T...[0], sizeof...(T), 1>;
+    template <numeric... T> Matrix(T...) -> Matrix<T...[0], sizeof...(T), 1>;
 
-    template <std::floating_point T, const usize W, const usize H>
+    template <numeric T, const usize W, const usize H>
     constexpr auto mix(Matrix<T, W, H> lhs, Matrix<T, W, H> rhs, f32 t) -> Matrix<T, W, H> {
         Matrix<T, W, H> result;
 

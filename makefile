@@ -19,6 +19,11 @@ clangd-cross:
 	@echo "CompileFlags:" > .clangd
 	@echo "  CompilationDatabase: build-cross" >> .clangd
 
+# Switch clangd to the wasm-build.
+clangd-cross:
+	@echo "CompileFlags:" > .clangd
+	@echo "  CompilationDatabase: build-wasm" >> .clangd
+
 setup: clangd-build
 	@rm -rf build
 	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -28,18 +33,28 @@ build: setup
 
 # Runs the game natively.
 run: build
-	@cd build; ./renderer
+	@cd build; ./bubble
 
 # A convenience for building the binary for Windows from UNIX operating systems.
 # It's not even that hard, I feel bad for people who think they need to use Windows for anything.
 # If anything supporting MSVC is more difficult due to how different it is and how sad the C++ standard is.
 cross-setup: clangd-cross
 	@rm -rf build-cross
-	@cmake -B build-cross -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+	@cmake -B build-cross -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
 	    -DCMAKE_TOOLCHAIN_FILE=cross/windows-toolchain.cmake
 
 cross-build: cross-setup
 	@cd build-cross; ninja
 
 cross-run: cross-build
-	@cd build-cross; wine renderer.exe
+	@cd build-cross; wine bubble.exe
+
+wasm-setup: clangd-wasm
+	@rm -rf build-wasm
+	@cmake -B build-cross -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+	    -DCMAKE_TOOLCHAIN_FILE=cross/wasm-toolchain.cmake
+
+wasm-build: wasm-setup
+	@cd build-wasm; ninja
+
+# wasm-serve: # TODO: Host output locally.

@@ -1,0 +1,8 @@
+#pragma once
+
+#include "../src/bubble/animator.hpp"
+#include "../src/bubble/class_loader.hpp"
+#include "../src/bubble/dynobject.hpp"
+#include "../src/bubble/object.hpp"
+#include "../src/bubble/scene.hpp"
+#include "../src/bubble/stage.hpp"

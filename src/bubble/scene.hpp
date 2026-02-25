@@ -8,9 +8,10 @@
 #include <draw>
 #include <rt>
 
-namespace sonic {
+namespace bubble {
     using draw::Image;
     using draw::Ref;
+    using draw::Grid;
     using draw::Color;
 
     /// A scene coroutine which can be run.
@@ -21,9 +22,7 @@ namespace sonic {
         /// Advances the state by 1/60 of a second.
         virtual void update(Io& io, rt::Input const& input) = 0;
         /// Called after update to mutate the render target.
-        virtual void draw(
-            Io& io, rt::Input const& input, Ref<Image> target, Ref<const Image> sheet, Ref<const Image> background
-        ) const = 0;
+        virtual void draw(Io& io, rt::Input const& input, Ref<Image> target) const = 0;
         virtual ~Scene() noexcept {}
 
         virtual void hot_reload(Io& io) {}

@@ -1,0 +1,34 @@
+Checks: >
+  cert-err58-cpp,
+  readability-identifier-naming,
+  cppcoreguidelines-narrowing-conversions
+
+CheckOptions:
+  # Naming for types
+  - { key: readability-identifier-naming.TypeCase, value: CamelCase }
+
+  # Class/Struct/Enum naming (inherited from TypeCase unless overridden)
+  - { key: readability-identifier-naming.ClassCase, value: CamelCase }
+  - { key: readability-identifier-naming.StructCase, value: CamelCase }
+  - { key: readability-identifier-naming.EnumCase, value: CamelCase }
+
+  # Enum constant naming
+  - { key: readability-identifier-naming.EnumConstantCase, value: CamelCase }
+
+  # Function naming
+  - { key: readability-identifier-naming.FunctionCase, value: lower_case }
+
+  # Variable naming
+  - { key: readability-identifier-naming.VariableCase, value: lower_case }
+
+  # Global and member variable naming (optional)
+  - { key: readability-identifier-naming.GlobalVariableCase, value: UPPER_CASE }
+  - { key: readability-identifier-naming.MemberCase, value: lower_case }
+
+  # Constant naming
+  - { key: readability-identifier-naming.ConstantCase, value: lower_case }
+  - { key: readability-identifier-naming.ClassConstantCase, value: UPPER_CASE }
+  - { key: readability-identifier-naming.ConstexprVariableCase, value: UPPER_CASE }
+
+  # Namespace naming (optional)
+  - { key: readability-identifier-naming.NamespaceCase, value: lower_case }

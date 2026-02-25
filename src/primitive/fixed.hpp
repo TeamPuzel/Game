@@ -3,28 +3,21 @@
 //
 // This header defines fixed point arithmetic used by the game.
 //
-// TODO(?): It would be nice to implement std::format for this type.
+// TODO(?): It would be nice to implement std::format for this type and drop the stream implementation.
 #pragma once
 #include "primitive.hpp"
 #include <iostream>
 #include <iomanip>
 
-/// A fixed point numeric type used by the game to more accurately recreate the original physics.
+/// A fixed point numeric type used by the game to more accurately recreate retro game physics.
 /// It is a 24 bit signed integer used together with an 8 bit fractional part.
 /// The sign is expressed as two's complement.
 /// It implements the usual implicit conversions to behave much like existing primitives.
-///
-/// That's because the original SEGA hardware did not have floats and had to use subpixels, a decimal
-/// type with 8 bit decimal precision. This type should result in math very accurate to the original
-/// and maintain an unchanging level of precision as the stage goes on.
 ///
 /// Much like signed primitives of C++ its overflow is undefined.
 ///
 /// The type relies on the static assertion of the core header, that signed primitives are two's complement
 /// and the compiler performs sign extension when lowering an arithmetic shift.
-///
-/// Because C++17 is an archaic decade old version and can't do signed shifts in constexpr I use equally awful compiler
-/// abuse to get around it. This language before C++20/23/26 is genuinely sad.
 class [[clang::trivial_abi]] fixed final { // NOLINT(readability-identifier-naming)
     u32 raw;
 
