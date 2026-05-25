@@ -19,11 +19,6 @@ clangd-cross:
 	@echo "CompileFlags:" > .clangd
 	@echo "  CompilationDatabase: build-cross" >> .clangd
 
-# Switch clangd to the wasm-build.
-clangd-cross:
-	@echo "CompileFlags:" > .clangd
-	@echo "  CompilationDatabase: build-wasm" >> .clangd
-
 setup: clangd-build
 	@rm -rf build
 	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -34,6 +29,21 @@ build: setup
 # Runs the game natively.
 run: build
 	@cd build; ./bubble
+
+# A simple command for recompiling parts of the game while it's running.
+# Because most of the runtime is just headers this inherently includes hot reloading those parts of the runtime.
+reload:
+	@rm -rf build/CMakeFiles
+	@rm -rf build/obj
+	@rm -rf build/res
+	@rm -rf build/.ninja_deps
+	@rm -rf build/.ninja_log
+	@rm -rf build/build.ninja
+	@rm -rf build/cmake_install.cmake
+	@rm -rf build/CMakeCache.txt
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHOT_RELOAD=ON
+	@cd build; ninja
+	@pkill -USR1 sonic
 
 # A convenience for building the binary for Windows from UNIX operating systems.
 # It's not even that hard, I feel bad for people who think they need to use Windows for anything.

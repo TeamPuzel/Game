@@ -59,6 +59,14 @@ namespace math {
             return raw;
         }
 
+        [[clang::always_inline]] constexpr explicit operator i64() const noexcept {
+            return raw;
+        }
+
+        [[clang::always_inline]] constexpr explicit operator i32() const noexcept {
+            return raw;
+        }
+
         constexpr auto operator+(angle other) const noexcept -> angle {
             return angle(raw + other.raw);
         }

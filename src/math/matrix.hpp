@@ -20,6 +20,8 @@ namespace math {
     /// The matrix provides it's dimensions as constants and the element type through `Matrix::Element`.
     ///
     /// TODO: This type sort of assumes floats in places so it needs more work now that it allows more element types.
+    /// For example, things like `Angle<T>` require floats and would require specializations for other
+    /// numeric types such as the retro fixed point type, which represents angles differently.
     template <numeric T, const usize W, const usize H> requires (W > 0 and H > 0) class Matrix final {
         std::array<T, W * H> data;
 
@@ -443,7 +445,9 @@ namespace math {
     /// A vector type, an alias of a matrix.
     template <numeric T, const usize LENGTH> using Vector = Matrix<T, LENGTH, 1>;
 
+#ifndef MSVC_COMPAT
     template <numeric... T> Matrix(T...) -> Matrix<T...[0], sizeof...(T), 1>;
+#endif
 
     template <numeric T, const usize W, const usize H>
     constexpr auto mix(Matrix<T, W, H> lhs, Matrix<T, W, H> rhs, f32 t) -> Matrix<T, W, H> {

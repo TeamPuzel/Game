@@ -4,6 +4,8 @@
 namespace bubble {
     class Player final : public Object, public DefaultCodable<Player> {
       public:
+        enum class Character : u8 { Bub, Bob } character = Character::Bub;
+
         void update(Io& io, rt::Input const& input, Stage& stage) noexcept override {
 
         }

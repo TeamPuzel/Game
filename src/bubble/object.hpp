@@ -36,10 +36,10 @@ namespace bubble {
         /// The class name is an interned selector to replace RTTI which generally breaks across shared libraries
         /// (it doesn't on macOS when using Apple's fork of Clang but that's hardly useful).
         /// Truly the language specification of all time.
-        rt::selector classname;
+        char const* classname;
 
         auto is_dynobject() const -> bool {
-            return not classname.empty();
+            return not classname;
         }
 
         std::vector<Box<Object>> children;
@@ -51,8 +51,8 @@ namespace bubble {
         /// The good news is that C++26 has reflection and it will automate this process :D
         ///
         /// If a classname is already present it does not override it.
-        void assume_classname(rt::selector new_classname) noexcept {
-            if (classname.empty()) classname = new_classname;
+        void assume_classname(char const* new_classname) noexcept {
+            if (not classname) classname = new_classname;
         }
 
       public:

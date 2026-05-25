@@ -3,4 +3,6 @@
 #include "../src/draw/color.hpp"
 #include "../src/draw/plane.hpp"
 #include "../src/draw/image.hpp"
+#include "../src/draw/stack.hpp"
 #include "../src/draw/text.hpp"
+#include "../src/draw/effect.hpp"

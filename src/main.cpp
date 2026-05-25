@@ -8,16 +8,14 @@ class Game final {
     Box<bubble::Scene> scene;
 
   public:
-    Game() {
-
-    }
+    Game() {}
 
     void init(Io& io) {
         scene = bubble::Stage::load(io, "1-1.stage");
     }
 
-    void update(Io& io, rt::Input const& input) {
-        scene->update(io, input);
+    void update(Io& io, rt::Input const& input, rt::SoundStage& sound) {
+        scene->update(io, input, sound);
     }
 
     void draw(Io& io, rt::Input const& input, draw::Ref<draw::Image> target) const {

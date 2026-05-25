@@ -4,6 +4,7 @@
 // This header defines everything about levels.
 #pragma once
 #include <primitive>
+#include <draw>
 #include <rt>
 #include <vector>
 #include <unordered_set>
@@ -60,7 +61,15 @@ namespace bubble::temp {
 
         void draw(draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
             // There isn't much logic to drawing this object I suppose.
-            target | draw::draw(sprite());
+            // target | draw::draw(sprite());
+
+            target | draw::draw(
+                draw::VStack(draw::VAlignment::Right, 16,
+                    sprite(),
+                    sprite() | draw::scale(2),
+                    sprite() | draw::scale(3)
+                )
+            );
         }
     };
 }
@@ -76,7 +85,6 @@ namespace bubble {
         usize tick = 0;
 
       public:
-
         /// Schedules the object for removal at the end of the current update cycle.
         /// It remains valid until then.
         void remove(Object* object) noexcept {
@@ -130,7 +138,7 @@ namespace bubble {
             if (removal_queue.bucket_count() > 1024) removal_queue.rehash(0);
         }
 
-        void update(Io& io, rt::Input const& input) override {
+        void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
             // The semantics are defined such that we handle collision first in sorting order on all active objects.
             // Updates follow in the same order but after all the collision. We iterate twice.
             // Also, the time complexity is silly here *but* it's just nearby objects so we should never hit
@@ -214,12 +222,13 @@ namespace bubble {
                     // to come from a dynamic library we are about to drop.
                     remove(object.raw());
                 } else {
-                    auto descriptor = class_loader::load(io, object->classname.view());
+                    auto descriptor = class_loader::load(io, object->classname);
                     auto replacement = descriptor.rebuilder(*object);
 
                     replacement->position = object->position;
                     replacement->classname = object->classname;
-                    if (object->classname == "Sonic") primary = replacement.raw();
+                    // TODO: Why was this hardcoded to Sonic? :D
+                    if (object->classname == (std::string_view) "Sonic") primary = replacement.raw();
 
                     std::swap(object, replacement);
                 }

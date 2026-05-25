@@ -38,6 +38,8 @@ class Io {
     virtual auto perform_open_library(char const* path) -> void* = 0;
     virtual void perform_close_library(void* library) = 0;
     virtual auto perform_load_symbol(void* library, char const* name) -> void* = 0;
+    virtual auto perform_read_wavefile(char const* path, u32 frequency) -> std::vector<f32> = 0;
+    virtual auto perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> = 0;
 
   public:
     Io(Io const&) = delete;
@@ -92,19 +94,27 @@ class Io {
         return perform_read_file(path.data());
     }
 
-    auto write_file(std::string_view path, std::span<u8> data) {
-        return perform_write_file(path.data(), data);
+    void write_file(std::string_view path, std::span<u8> data) {
+        perform_write_file(path.data(), data);
+    }
+
+    auto read_wavefile(std::string_view path, u32 frequency = 48000) -> std::vector<f32> {
+        return perform_read_wavefile(path.data(), frequency);
+    }
+
+    auto read_oggfile(std::string_view path, u32 frequency = 48000) -> std::vector<f32> {
+        return perform_read_oggfile(path.data(), frequency);
     }
 
   private:
     static thread_local std::vector<Io*> threadlocal_io_stack;
 
   public:
-    static auto unsafe_push_threadlocal_io(Io* io) {
+    static void unsafe_push_threadlocal_io(Io* io) {
         threadlocal_io_stack.push_back(io);
     }
 
-    static auto unsafe_pop_threadlocal_io() {
+    static void unsafe_pop_threadlocal_io() {
         threadlocal_io_stack.pop_back();
     }
 

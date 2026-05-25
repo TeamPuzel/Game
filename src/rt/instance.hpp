@@ -5,6 +5,7 @@
 #include <io>
 #include <draw>
 #include <font>
+#include <sound>
 #include <concepts>
 #include <sstream>
 #include <string>
@@ -15,7 +16,6 @@
 #include <chrono>
 #include <numeric>
 #include <SDL3/SDL.h>
-#include "selector.hpp"
 
 /// An implemenation of Io purely in terms of SDL3. This is very convenient because we don't need
 /// to depend on the standard library or the operating system in SDL3 based projects.
@@ -63,10 +63,59 @@ class SdlIo final : public Io {
         if (not ret) throw Error();
         return (void*) ret;
     }
+
+    auto perform_read_wavefile(char const* path, u32 frequency) -> std::vector<f32> override {
+        SDL_AudioSpec src_spec;
+        u8* src_data = nullptr;
+        u32 src_count = 0;
+
+        if (not SDL_LoadWAV(path, &src_spec, &src_data, &src_count)) throw Error();
+
+        ScopeExit scope_exit_src = [=] { SDL_free(src_data); };
+
+        SDL_AudioSpec dst_spec {
+            .format = SDL_AUDIO_F32,
+            .channels = 1,
+            .freq = (i32) frequency
+        };
+        u8* dst_data = nullptr;
+        i32 dst_count = 0;
+
+        if (not SDL_ConvertAudioSamples(
+            &src_spec, src_data, src_count,
+            &dst_spec, &dst_data, &dst_count
+        )) {
+            throw Error();
+        }
+        ScopeExit scope_exit_dst = [=] { SDL_free(dst_data); };
+
+        i32 float_count = dst_count / sizeof(f32);
+        f32* float_data = (f32*) dst_data;
+
+        return std::vector(float_data, float_data + float_count);
+    }
+
+    // Okay. So, stb_vorbis commits gettext underscore levels of tragedy.
+    // It has to go in a new cpp file which slows down compilation, or I can use some other nonsensical workaround.
+    //
+    // THE PREPROCESSOR WALL OF SHAME:
+    // - On Windows SDL defines main even for C++ (because apparently that's superior to just telling MSVC to use main).
+    // - On Windows Microsoft defines a criminal amount of pure garbage macros.
+    // - Gettext makes the brilliant decision to define the fucking underscore (yay modern C++ standard collisions).
+    // - Stb vorbis defines L, R and C and who knows what else. AT LEAST UNDEF THEM AFTERWARDS FOR FUCKS SAKE.
+    //
+    // Because I have no clue what other garbage is going to FUCK with templates even if I undef those,
+    // the safest option is to redeclare what I need myself.
+    //
+    // Alternatively SDL does have an audio library, but due to the stupid way SDL uses trampolines for
+    // everything dead code elimination doesn't work on it, and it's generally used as a massive dynamic library anyway.
+    // I do not wish to bother with fixing static linkage or adding another massive library just to use one function.
+    auto perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> override;
 };
 
-
 namespace rt {
+    using sound::SoundStage;
+
     struct Mouse final {
         i32 x, y;
         bool left, right;
@@ -146,6 +195,19 @@ namespace rt {
         friend constexpr auto operator!=(rt::KeyState const& lhs, rt::KeyState const& rhs) noexcept -> bool {
             return !(lhs == rhs);
         }
+    };
+
+    // This is just a temporary packed controller struct for NES games.
+    // I don't feel like designing a good, generic controller API for now and this is enough for this game.
+    struct [[deprecated]] GamePadState final {
+        bool up     : 1;
+        bool down   : 1;
+        bool left   : 1;
+        bool right  : 1;
+        bool start  : 1;
+        bool select : 1;
+        bool a      : 1;
+        bool b      : 1;
     };
 }
 
@@ -245,6 +307,9 @@ namespace rt {
         usize poll_counter { 0 };
 
       protected:
+        [[deprecated]] std::optional<GamePadState> pad_0;
+        [[deprecated]] std::optional<GamePadState> pad_1;
+
         void press(Key key) {
             if (auto existing = keys.extract(KeyState::from(key))) {
                 keys.insert(existing.value().pressed());
@@ -306,9 +371,19 @@ namespace rt {
         auto counter() const -> usize {
             return poll_counter;
         }
+
+        [[deprecated]] auto gamepad(u8 slot = 0) -> std::optional<GamePadState> {
+            switch (slot) {
+                case 0:  return pad_0;
+                case 1:  return pad_1;
+                default: return std::nullopt;
+            }
+        }
     };
 
     class ManagedSdlInput final : public Input {
+        std::array<SDL_Gamepad*, 2> sdl_pad;
+
       public:
         void poll() {
             // TODO: Apply scale to mouse input. Unused in this game anyway so it's whatever.
@@ -329,7 +404,55 @@ namespace rt {
                 }
             }
 
+            { // DEPRECATED
+                // I love how they're mixing the terminology, especially when it's not even synonymous.
+                i32 pad_count = 0; SDL_JoystickID* joysticks = SDL_GetGamepads(&pad_count);
+                if (joysticks) {
+                    for (i32 i = 0; i < 2; i += 1) {
+                        if (i < pad_count) {
+                            // Open the gamepad if it isn't already open.
+                            if (not sdl_pad[i]) {
+                                sdl_pad[i] = SDL_OpenGamepad(joysticks[i]);
+                            }
+                        } else {
+                            // If a gamepad was unplugged, close it and clear the pointer.
+                            if (sdl_pad[i]) {
+                                SDL_CloseGamepad(sdl_pad[i]);
+                                sdl_pad[i] = nullptr;
+                            }
+                        }
+                    }
+                    SDL_free(joysticks);
+                }
+
+                auto get_pad_state = [](SDL_Gamepad* pad) -> std::optional<GamePadState> {
+                    if (!pad) return std::nullopt;
+
+                    return GamePadState {
+                        .up     = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP),
+                        .down   = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN),
+                        .left   = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT),
+                        .right  = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT),
+                        .start  = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START),
+                        .select = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK),
+
+                        // Why are these named like this, it's literally horrible. They are called face buttons.
+                        .a      = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST),
+                        .b      = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH)
+                    };
+                };
+
+                pad_0 = get_pad_state(sdl_pad[0]);
+                pad_1 = get_pad_state(sdl_pad[1]);
+            }
+
             advance_counter();
+        }
+
+        ~ManagedSdlInput() {
+            for (auto pad : sdl_pad) {
+                if (pad) SDL_CloseGamepad(pad);
+            }
         }
     };
 
@@ -475,9 +598,12 @@ namespace rt {
     /// so it is impossible for it to avoid exposing SDL includes, but that's an arbitrary
     /// issue caused by being forced to support old C++.
     template <typename Self>
-    concept Instance = requires(Self const& self, Self& self_mut, draw::Ref<draw::Image> target, Io& io, Input const& input) {
+    concept Instance = requires(
+        Self const& self, Self& self_mut,
+        draw::Ref<draw::Image> target, Io& io, Input const& input, SoundStage& sound
+    ) {
         { self_mut.init(io) } -> std::same_as<void>;
-        { self_mut.update(io, input) } -> std::same_as<void>;
+        { self_mut.update(io, input, sound) } -> std::same_as<void>;
         { self.draw(io, input, target) } -> std::same_as<void>;
     };
 
@@ -504,8 +630,6 @@ namespace rt {
     /// A game cannot run itself, it is run by the platform it's on
     /// and can be run in many ways, this is just one implementation.
     static void run(Instance auto& game, char const* title, i32 width, i32 height, i32 scale) {
-        selector::unsafe_set_self(); // Bind the central selector runtime.
-
         static std::atomic<bool> is_running = false;
 
         if (is_running.load()) {
@@ -514,7 +638,7 @@ namespace rt {
             is_running.store(true);
         }
 
-        if (not SDL_Init(SDL_INIT_VIDEO)) {
+        if (not SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
             throw RunError {
                 RunError::Reason::CouldNotInitializeSdl,
                 SDL_GetError(),
@@ -584,6 +708,8 @@ namespace rt {
 
         SdlIo io;
         Io::unsafe_push_threadlocal_io(&io);
+
+        SoundStage sound_stage;
 
         // Set up the proper, esoteric RAII cleanup in case of uncaught exceptions.
         // I don't feel like documenting this nonsense, but this is somehow the cleanest way to do this
@@ -671,7 +797,7 @@ namespace rt {
                     #endif
                 }
 
-                game.update(io, input);
+                game.update(io, input, sound_stage);
             });
             game.draw(io, input, target);
             if (perf_overlay) draw_perf_overlay();
@@ -711,8 +837,6 @@ namespace rt {
     }
 
     template <typename F> void run_io(F fn) requires requires (F fn, Io& io) { fn(io); } {
-        selector::unsafe_set_self(); // Initialize the central selector runtime.
-
         SDL_Init(0);
         SdlIo io;
         Io::unsafe_push_threadlocal_io(&io);
@@ -724,4 +848,223 @@ namespace rt {
 
         fn(io);
     }
+
+    // /// Runs a game in the environment, applying a CRT effect.
+    // ///
+    // /// This method was moved from Game into an environment message.
+    // /// A game cannot run itself, it is run by the platform it's on
+    // /// and can be run in many ways, this is just one implementation.
+    // static void run_crt(Instance auto& game, char const* title, i32 width, i32 height, i32 scale) {
+    //     static std::atomic<bool> is_running = false;
+
+    //     if (is_running.load()) {
+    //         throw RunError { RunError::Reason::AlreadyRunning };
+    //     } else {
+    //         is_running.store(true);
+    //     }
+
+    //     if (not SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
+    //         throw RunError {
+    //             RunError::Reason::CouldNotInitializeSdl,
+    //             SDL_GetError(),
+    //         };
+    //     }
+
+    //     auto window = SDL_CreateWindow(
+    //         title, width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY
+    //     );
+    //     if (not window) {
+    //         throw RunError {
+    //             RunError::Reason::CouldNotCreateWindow,
+    //             SDL_GetError(),
+    //         };
+    //     }
+    //     SDL_SetWindowMinimumSize(window, width, height);
+    //     SDL_HideCursor();
+    //     SDL_SyncWindow(window);
+
+    //     // A simple SDL provided renderer.
+    //     //
+    //     // We are already using SDL and there is no need to bother setting up OpenGL just to
+    //     // render to a texture and blit it to the screen. There's really no need for hardware
+    //     // acceleration to begin with, the only API that should be used is a platform specific
+    //     // synchronization primitive such as CADisplayLink on macOS. That would also properly
+    //     // support variable refresh rates on such platforms which I am unsure SDL actually handles.
+    //     auto renderer = SDL_CreateRenderer(window, nullptr);
+    //     if (not renderer) {
+    //         throw RunError {
+    //             .reason = RunError::Reason::CouldNotCreateRenderer,
+    //             .description = SDL_GetError(),
+    //         };
+    //     }
+    //     // We can discard the error, it is inefficient not to use vsync but if a platform doesn't support it
+    //     // we have much greater issues than rendering too fast and it's impressive we even got this far.
+    //     // i.e. that kind of platform is probably better suited for a different runtime implementation.
+    //     bool is_vsync = SDL_SetRenderVSync(renderer, 1);
+
+    //     // Not const because we reallocate on window resize.
+    //     //
+    //     // Interesting note: stretching a pixel texture is the best way to get sharp pixels
+    //     // with resizable windows on modern displays. You do very much notice blurry pixels,
+    //     // you do not notice when the pixel ratio isn't quite square.
+    //     //
+    //     // Sure, on extremely low resolution displays this was once much more extreme, but no
+    //     // operating system actually supports those anyhow. There is no reason to compromise here
+    //     // as for whatever reason a lot of games seem to do.
+    //     SDL_Texture* texture = nullptr;
+
+    //     /// Reallocates the texture.
+    //     auto const resize_texture = [&texture, renderer, &width, &height] (i32 w, i32 h) -> void {
+    //         if (texture) {
+    //             SDL_DestroyTexture(texture);
+    //         }
+    //         texture = SDL_CreateTexture(
+    //             renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h
+    //         );
+    //         if (not texture) {
+    //             throw RunError {
+    //                 RunError::Reason::CouldNotCreateTexture,
+    //                 SDL_GetError(),
+    //             };
+    //         }
+    //         SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+    //         width = w;
+    //         height = h;
+    //     };
+    //     resize_texture(width, height);
+
+    //     SdlIo io;
+    //     Io::unsafe_push_threadlocal_io(&io);
+
+    //     // Set up the proper, esoteric RAII cleanup in case of uncaught exceptions.
+    //     // I don't feel like documenting this nonsense, but this is somehow the cleanest way to do this
+    //     // until std::scope_exit is implemented >:(
+    //     // Alternatively one could make all the code atrocious by wrapping SDL pointers in unique pointers
+    //     // with deleters but that's rather unreadable.
+    //     ScopeExit scope_exit = [=] {
+    //         Io::unsafe_pop_threadlocal_io();
+    //         SDL_DestroyTexture(texture);
+    //         SDL_DestroyRenderer(renderer);
+    //         SDL_DestroyWindow(window);
+    //         SDL_Quit();
+    //         is_running.store(false);
+    //     };
+
+    //     game.init(io);
+
+    //     SDL_Event event;
+    //     usize frame = 0;
+    //     bool perf_overlay = true;
+    //     bool heuristic_rate_lock = true;
+    //     auto target = draw::Image(width / scale, height / scale);
+    //     auto input = rt::input();
+    //     auto rate = rt::refresh_rate_lock();
+
+    //     const auto apply_window_size = [&] {
+    //         // We are explicitly using the scaled window size and not the
+    //         // GetWindowSizeInPixels(window:w:h:) call because we do actually want to scale
+    //         // our own pixel scale by the display scale.
+    //         // Effectively the game is always scaled twice on high density displays which will
+    //         // give consistent sizing between devices.
+    //         i32 w, h; SDL_GetWindowSize(window, &w, &h);
+    //         resize_texture(w, h);
+    //         target.resize(w / scale, h / scale);
+    //     };
+
+    //     while (true) {
+    //         while (SDL_PollEvent(&event)) {
+    //             switch (event.type) {
+    //                 case SDL_EVENT_QUIT: goto end;
+    //                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: apply_window_size(); break;
+    //                 default: break;
+    //             }
+    //         }
+
+    //         // Ensure stable 60hz.
+    //         rate.lap();
+
+    //         const auto draw_perf_overlay = [&] {
+    //             std::stringstream out;
+    //             out << "Assumed rate: ";
+    //             if (rate.common_rate) out << *rate.common_rate; else out << "Unknown";
+    //             out << std::endl
+    //                 << "Estimated rate: " << rate.estimated_hertz << std::endl
+    //                 << "Average ms: " << rate.estimated_millis << std::endl
+    //                 << "Vsync status: " << (is_vsync ? "Enabled" : "Disabled") << std::endl
+    //                 << "Heuristic lock status: " << (heuristic_rate_lock ? "Enabled" : "Disabled") << std::endl
+    //                 << "Scale: " << scale << 'x' << std::endl
+    //                 << "Resolution: " << target.width() << 'x' << target.height() << std::endl;
+
+    //             draw::MultilineText text { out.str(), font::mine() };
+    //             target | draw::draw(text, target.width() - text.width() - 8, 8);
+    //         };
+
+    //         rate.sync(frame, heuristic_rate_lock ? 60 : 0, [&] {
+    //             input.poll();
+
+    //             { // Process runtime specific debug options.
+    //                 if (input.key_pressed(Key::Num0)) {
+    //                     is_vsync = !is_vsync;
+    //                     SDL_SetRenderVSync(renderer, is_vsync);
+    //                 }
+    //                 if (input.key_pressed(Key::Num8)) heuristic_rate_lock = !heuristic_rate_lock;
+    //                 if (input.key_pressed(Key::Num9)) perf_overlay = !perf_overlay;
+
+    //                 if (bool p = input.key_pressed(Key::Plus), m = input.key_pressed(Key::Minus); p or m) {
+    //                     if (p) scale = std::min(8, scale + 1);
+    //                     if (m) scale = std::max(1, scale - 1);
+    //                     target | draw::clear();
+    //                     apply_window_size();
+    //                 }
+
+    //                 #ifdef _MSC_VER // Fullscreen button for a funny operating system.
+    //                 if (input.key_pressed(Key::F1)) SDL_SetWindowFullscreen(window, true);
+    //                 #endif
+    //             }
+
+    //             game.update(io, sound_context, input);
+    //         });
+    //         game.draw(io, input, target);
+    //         if (perf_overlay) draw_perf_overlay();
+
+    //         SDL_RenderClear(renderer);
+
+    //         auto crt_target = draw::Image(width, height);
+    //         crt_target | draw::draw_threaded(
+    //             target
+    //                 | draw::as_ref()
+    //                 | draw::crt_effect(scale)
+    //         );
+
+    //         SDL_UpdateTexture(texture, nullptr, crt_target.raw(), u16(crt_target.width() * sizeof(draw::Color)));
+
+    //         if (not SDL_RenderTexture(renderer, texture, nullptr, nullptr)) {
+    //             throw RunError {
+    //                 RunError::Reason::CouldNotRenderTexture,
+    //                 SDL_GetError(),
+    //             };
+    //         }
+
+    //         if (not SDL_RenderPresent(renderer)) {
+    //             throw RunError {
+    //                 RunError::Reason::CouldNotPresentToWindow,
+    //                 SDL_GetError(),
+    //             };
+    //         }
+
+    //         frame += 1;
+    //     }
+    // end:
+    // }
+
+    // /// Runs a game in the environment, applying a CRT effect.
+    // ///
+    // /// This method was moved from Game into an environment message.
+    // /// A game cannot run itself, it is run by the platform it's on
+    // /// and can be run in many ways, this is just one implementation.
+    // ///
+    // /// This overload uses the default window size of 800x600.
+    // inline void run_crt(Instance auto& game, char const* title, i32 scale = 1) {
+    //     run(game, title, 800, 600, scale);
+    // }
 }
