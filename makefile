@@ -21,7 +21,9 @@ clangd-cross:
 
 setup: clangd-build
 	@rm -rf build
-	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+        -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++
 
 build: setup
 	@cd build; ninja
@@ -43,7 +45,7 @@ reload:
 	@rm -rf build/CMakeCache.txt
 	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHOT_RELOAD=ON
 	@cd build; ninja
-	@pkill -USR1 sonic
+	@pkill -USR1 bubble
 
 # A convenience for building the binary for Windows from UNIX operating systems.
 # It's not even that hard, I feel bad for people who think they need to use Windows for anything.

@@ -2,17 +2,6 @@
 
 # Project --------------------------------------------------------------------------------------------------------------
 
-# This is important otherwise macOS will choose AppleClang and Linux will generally choose GCC.
-# Technically this is meaningless on Windows (when used with Visual Studio) as per typical
-# Microsoft nonsense they use a dedicated JSON file to declare the compiler.
-# Just to be safe this is will remain conditional.
-# AppleClang does have a myesterious benefit of making RTTI work across shared libraries but that's hardly
-# useful as it's definitely not a portable behavior as the C++ standard doesn't standardize anything at all here.
-if(NOT ${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-    set(CMAKE_C_COMPILER clang)
-    set(CMAKE_CXX_COMPILER clang++)
-endif()
-
 cmake_minimum_required(VERSION 3.21)
 project(Game C CXX)
 
@@ -27,7 +16,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -Wno-unused -Wpedantic -Wno-logical-op-parentheses -Wno-c++26-extensions -Wno-pre-c++26-compat")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -Wno-unused -Wpedantic -Wno-logical-op-parentheses -Wno-c++26-extensions -Wno-pre-c++26-compat -Wno-tautological-compare")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ftrivial-auto-var-init=pattern")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wno-deprecated-declarations")
 else()

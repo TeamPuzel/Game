@@ -60,6 +60,31 @@ namespace bubble {
         auto operator=(Object&&) -> Object& = delete;
         virtual ~Object() noexcept {}
 
+        auto isa(std::string_view name) const noexcept -> bool {
+            return classname == name;
+        }
+
+        void wrap_position() noexcept {
+            constexpr i32 screen_width = 32 * 8;                        // 256 px
+            constexpr i32 screen_height = 30 * 8;                       // 240 px
+            constexpr i32 top_margin = 4 * 8;                           // 32  px
+            constexpr i32 playable_height = screen_height - top_margin; // 208 px
+
+            // Horizontal wrap.
+            if (position.x < 0) {
+                position.x += screen_width;
+            } else if (position.x >= screen_width) {
+                position.x -= screen_width;
+            }
+
+            // Vertical wrap.
+            if (position.y < top_margin) {
+                position.y += playable_height;
+            } else if (position.y >= screen_height) {
+                position.y -= playable_height;
+            }
+        }
+
         /// Called once every tick at 60hz carefully paced in sync with the display clock.
         /// The delta time is effectively constant and can be left out.
         virtual void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {}
@@ -68,12 +93,32 @@ namespace bubble {
         ///
         /// The provided target slice retains the width and height of the scene target, so for objects at the origin
         /// it effectively wraps the scene target transparently in a slice, preserving its category.
-        virtual void draw(draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept {}
+        virtual void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept {}
 
         auto pixel_pos() const noexcept -> math::point<i32> {
             return math::point { i32(position.x), i32(position.y) };
         }
+
+        /// A request to flip horizontally.
+        virtual void flip() noexcept {}
+
+        /// An arbitrary editor toggle.
+        virtual void alternate() noexcept {}
     };
+
+    template <typename T, typename U> auto flat_cast(U* ptr) noexcept -> T* {
+        if (auto result = dynamic_cast<T*>(ptr)) return result;
+
+        std::string_view t = typeid(T).name(), u = typeid(*ptr).name();
+        if (t == u) return (T*) ptr; else return nullptr;
+    }
+
+    template <typename T, typename U> auto flat_cast(U const* ptr) noexcept -> T const* {
+        if (auto result = dynamic_cast<T const*>(ptr)) return result;
+
+        std::string_view t = typeid(T).name(), u = typeid(*ptr).name();
+        if (t == u) return (T const*) ptr; else return nullptr;
+    }
 
     /// A game object loadable from files and hot-reloadable during gameplay.
     /// Obviously don't attempt rebuilding if the ABI was broken between reloads.
@@ -85,14 +130,16 @@ namespace bubble {
     /// }
     template <typename, typename = void> struct DynamicObject : std::false_type {};
     template <typename Self> struct DynamicObject<Self, std::enable_if_t<
-        std::is_same<decltype(Self::rebuild(std::declval<Self const&>())), Box<Object>>::value and
-        std::is_same<decltype(Self::serialize(std::declval<Self const&>(), std::declval<BinaryWriter&>())), void>::value and
-        std::is_same<decltype(Self::deserialize(std::declval<BinaryReader&>(), std::declval<i32>(), std::declval<i32>())), Box<Object>>::value
+        std::is_same<decltype(Self::rebuild(std::declval<Self const*>())), Box<Object>>::value and
+        std::is_same<decltype(Self::serialize(std::declval<Self const*>(), std::declval<BinaryWriter&>())), void>::value and
+        std::is_same<decltype(Self::deserialize(std::declval<BinaryReader&>(), std::declval<i32>(), std::declval<i32>())), Box<Object>>::value and
+        std::is_same<decltype(Self::initialize(std::declval<i32>(), std::declval<i32>())), Box<Object>>::value
     >> : std::true_type {};
 
-    using ObjectRebuilder    = auto (*) (Object const&) -> Box<Object>;
-    using ObjectSerializer   = auto (*) (Object const&, BinaryWriter&) -> void;
+    using ObjectRebuilder    = auto (*) (Object const*) -> Box<Object>;
+    using ObjectSerializer   = auto (*) (Object const*, BinaryWriter&) -> void;
     using ObjectDeserializer = auto (*) (BinaryReader&, i32 x, i32 y) -> Box<Object>;
+    using ObjectInitializer  = auto (*) (i32 x, i32 y) -> Box<Object>;
 
     // /// A game object loadable from files and hot-reloadable during gameplay.
     // /// Obviously don't attempt rebuilding if the ABI was broken between reloads.
@@ -110,20 +157,24 @@ namespace bubble {
     /// TODO: This is stupid, just put it in the Object supertype and use newer C++ deducing this.
     ///       Silly language though, having no class ("static") inheritance.
     template <typename Self> struct DefaultCodable {
-        static auto rebuild(Object const& existing) -> Box<Object> {
+        static auto rebuild(Object const* existing) -> Box<Object> {
             auto ret = Box<Self>::make();
-            ret->position = existing.position;
+            ret->position = existing->position;
             return ret;
         }
 
-        static auto deserialize(BinaryReader& reader, i32 x, i32 y) -> Box<Object> {
+        static auto initialize(i32 x, i32 y) -> Box<Object> {
             auto ret = Box<Self>::make();
             ret->position = { x, y };
             return ret;
         }
 
-        static void serialize(Object const& self, BinaryWriter& writer) {
-            // TODO: Serialize basics and classname.
+        static auto deserialize(BinaryReader& reader, i32 x, i32 y) -> Box<Object> {
+            return initialize(x, y);
+        }
+
+        static void serialize(Object const* self, BinaryWriter& writer) {
+
         }
     };
 }

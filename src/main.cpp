@@ -34,13 +34,13 @@ class Game final {
             RELOAD_REQUESTED = false;
         }
 
-        if (input.key_pressed(rt::Key::Tab)) {
-            if (dynamic_cast<bubble::Stage*>(scene.raw())) {
-                scene = bubble::Editor::of(scene.cast<bubble::Stage>());
-            } else if (auto editor = dynamic_cast<bubble::Editor*>(scene.raw())) {
-                scene = editor->finalize();
-            }
-        }
+        // if (input.key_pressed(rt::Key::Tab)) {
+        //     if (dynamic_cast<bubble::Stage*>(scene.raw())) {
+        //         scene = bubble::Editor::of(scene.cast<bubble::Stage>());
+        //     } else if (auto editor = dynamic_cast<bubble::Editor*>(scene.raw())) {
+        //         scene = editor->finalize();
+        //     }
+        // }
 
         scene->update(io, input, sound);
     }
@@ -58,7 +58,6 @@ auto main() -> i32 {
     sa.sa_flags = SA_RESTART; // restart syscalls after signal
     sigaction(SIGUSR1, &sa, NULL);
 #endif
-
     Game instance; rt::run(instance, "Bubble Bobble DX",
         32 * 8 * 2, // NES tiles to window size.
         30 * 8 * 2,

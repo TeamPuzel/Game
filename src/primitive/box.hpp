@@ -47,6 +47,11 @@ template <typename T> class Box final {
         delete this->inner; // Deleting a nullptr is sound.
     }
 
+    void erase() {
+        delete this->inner;
+        this->inner = nullptr;
+    }
+
     auto operator->() const noexcept [[clang::lifetimebound]] -> T* {
         return this->inner;
     }

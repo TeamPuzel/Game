@@ -6,7 +6,7 @@
 #include <io>
 
 #if defined(_MSC_VER)
-#define DLLEXPORT [[gnu::dllexport]]
+#define DLLEXPORT __declspec(dllexport)
 #else
 #define DLLEXPORT
 #endif
@@ -28,7 +28,11 @@ extern "C" DLLEXPORT ObjectSerializer __game_object_serialize() {     \
 }                                                                     \
 extern "C" DLLEXPORT ObjectDeserializer __game_object_deserialize() { \
     return (ObjectDeserializer) &CLASSNAME::deserialize;              \
+}                                                                     \
+extern "C" DLLEXPORT ObjectInitializer __game_object_initialize() {   \
+    return (ObjectInitializer) &CLASSNAME::initialize;                \
 }
 #define OBJECT_REBUILD "__game_object_rebuild"
 #define OBJECT_SERIALIZE "__game_object_serialize"
 #define OBJECT_DESERIALIZE "__game_object_deserialize"
+#define OBJECT_INITIALIZE "__game_object_initialize"

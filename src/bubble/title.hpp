@@ -20,10 +20,14 @@ namespace bubble {
 
         void start(Io& io) {
             switch (menu_selection) {
-                case 0: transition(Venue::of(io, Play::OnePlayer,       std::move(sheet))); break;
-                case 1: transition(Venue::of(io, Play::TwoPlayer,       std::move(sheet))); break;
-                case 2: transition(Venue::of(io, Play::TwoPlayerVersus, std::move(sheet))); break;
+                case 0: transition(Venue::of(io, Mode::OnePlayer,       std::move(sheet))); break;
+                case 1: transition(Venue::of(io, Mode::TwoPlayer,       std::move(sheet))); break;
+                case 2: transition(Venue::of(io, Mode::TwoPlayerVersus, std::move(sheet))); break;
             }
+        }
+
+        void start_editor(Io& io) {
+            transition(Stage::load(io, 1, std::move(sheet), true));
         }
 
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
@@ -32,7 +36,7 @@ namespace bubble {
 
             if (tick == 0) {
                 sound.play(
-                    sound::Wave::from(io.read_oggfile("res/the_secret_room.ogg"))
+                    sound::Wave::from(io.read_oggfile("res/snes_bubble_bustin.ogg"))
                         | sound::loop()
                 );
             }
@@ -46,7 +50,12 @@ namespace bubble {
 
             if (input.gamepad_pressed(Button::A) or input.key_pressed(Key::Enter)) {
                 sound.stop();
-                start(io);
+                return start(io);
+            }
+
+            if (input.key_pressed(Key::Tab)) {
+                sound.stop();
+                return start_editor(io);
             }
 
             tick += 1;
@@ -56,7 +65,7 @@ namespace bubble {
             auto title_card = sheet.inner
                 | draw::as_ref()
                 | draw::slice(96, 112, 192, 164)
-                | draw::apply_if(tick / 12 % 2 == 0, draw::map([] (Color c, i32 x, i32 y) -> Color {
+                | draw::apply_if(tick / 12 % 2 == 0, draw::map([] (Color c) -> Color {
                     return c == draw::color::pico::PINK
                         ? draw::color::pico::LIGHT_PINK
                         : c;

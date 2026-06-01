@@ -16,6 +16,7 @@ namespace bubble::class_loader {
         ObjectRebuilder rebuilder;
         ObjectSerializer serializer;
         ObjectDeserializer deserializer;
+        ObjectInitializer initializer;
     };
 
     template <typename F> using Stub = auto (*) () -> F;
@@ -31,11 +32,13 @@ namespace bubble::class_loader {
         Stub<ObjectRebuilder> rebuilder { nullptr };
         Stub<ObjectSerializer> serializer { nullptr };
         Stub<ObjectDeserializer> deserializer { nullptr };
+        Stub<ObjectInitializer> initializer { nullptr };
 
         const auto fill = [&] (Io::DynamicLibrary const& obj) {
             rebuilder = (decltype(rebuilder)) obj.symbol("__game_object_rebuild");
             serializer = (decltype(serializer)) obj.symbol("__game_object_serialize");
             deserializer = (decltype(deserializer)) obj.symbol("__game_object_deserialize");
+            initializer = (decltype(initializer)) obj.symbol("__game_object_initialize");
         };
 
         if (const auto it = reg.find(library_path.str()); it != reg.end()) {
@@ -46,7 +49,7 @@ namespace bubble::class_loader {
             reg.emplace(library_path.str(), std::move(obj));
         }
 
-        return { rebuilder(), serializer(), deserializer() };
+        return { rebuilder(), serializer(), deserializer(), initializer() };
     }
 
     /// Swaps which registry is active, since we need to be able to destroy old objects while creating new ones.

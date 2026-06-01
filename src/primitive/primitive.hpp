@@ -84,3 +84,26 @@ template <typename Fn> class ScopeExit final {
         fn();
     }
 };
+
+/// Performs forwarding adapter composition. Based on the design of std::ranges.
+template <typename Self, typename Adapt> [[clang::always_inline]]
+constexpr auto operator|(Self&& self, Adapt&& adapt) noexcept(noexcept(std::forward<Adapt>(adapt)(std::forward<Self>(self))))
+    -> decltype(std::forward<Adapt>(adapt)(std::forward<Self>(self)))
+{
+    return std::forward<Adapt>(adapt)(std::forward<Self>(self));
+}
+
+// template <typename Bound> struct Range final {
+//     struct UnboundedEdge final {};
+//     struct Inclusive final { Bound value; };
+//     struct Exclusive final { Bound value; };
+
+//     static constexpr UnboundedEdge Unbounded = UnboundedEdge();
+
+//     using Edge = std::variant<UnboundedEdge, Inclusive, Exclusive>;
+
+//     Edge start, end;
+
+//     Range(Edge start, Edge end) : start(start), end(end) {}
+//     Range() : Range(Unbounded, Unbounded) {}
+// };

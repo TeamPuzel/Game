@@ -113,6 +113,12 @@ class SdlIo final : public Io {
     auto perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> override;
 };
 
+namespace rt::exec {
+    class Executor final {
+
+    };
+}
+
 namespace rt {
     using sound::SoundStage;
 
@@ -306,7 +312,7 @@ namespace rt {
     };
 
     class Input {
-        std::optional<Mouse> mouse_state;
+        mutable std::optional<Mouse> mouse_state, last_mouse_state;
         std::unordered_set<KeyState> keys;
         usize poll_counter { 0 };
 
@@ -332,6 +338,10 @@ namespace rt {
             return mouse_state;
         }
 
+        auto last_mouse() -> std::optional<Mouse>& {
+            return last_mouse_state;
+        }
+
         void advance_counter() {
             poll_counter += 1;
         }
@@ -346,6 +356,18 @@ namespace rt {
             return mouse_state;
         }
 
+        auto last_mouse() const -> std::optional<Mouse> const& {
+            return last_mouse_state;
+        }
+
+        auto left_click() const -> bool {
+            return (mouse() and mouse()->left) and (not last_mouse() or not last_mouse()->left);
+        }
+
+        auto right_click() const -> bool {
+            return (mouse() and mouse()->right) and (not last_mouse() or not last_mouse()->right);
+        }
+
         auto key_pressed(Key key) const -> bool {
             if (auto k = keys.find(KeyState::from(key)); k != keys.end()) {
                 return (*k).pressed_for == 0;
@@ -358,7 +380,7 @@ namespace rt {
             return keys.find(KeyState::from(key)) != keys.end();
         }
 
-        auto key_repeating(Key key, i32 delay, i32 interval) const -> bool {
+        auto key_repeating(Key key, i32 delay = 20, i32 interval = 5) const -> bool {
             // If there is no matching key, it can't be pressed.
             const auto ki = keys.find(KeyState::from(key));
             if (ki == keys.end()) return false;
@@ -427,6 +449,27 @@ namespace rt {
                 case Button::B:      return gamepad(slot).value_or(GamePadState()).b;
             }
         }
+
+        template <typename Fn> auto with_offset(i32 x_offset, i32 y_offset, Fn const& fn) const
+            noexcept(noexcept(fn(*this))) -> decltype(fn(*this))
+        {
+            std::optional<Mouse> preserved_mouse_state = mouse_state;
+            std::optional<Mouse> preserved_last_mouse_state = last_mouse_state;
+
+            if (mouse_state) {
+                mouse_state->x += x_offset;
+                mouse_state->y += y_offset;
+                last_mouse_state->x += x_offset;
+                last_mouse_state->y += y_offset;
+            }
+
+            ScopeExit scope_exit([&] {
+                mouse_state = preserved_mouse_state;
+                last_mouse_state = preserved_last_mouse_state;
+            });
+
+            return fn(*this);
+        }
     };
 
     class ManagedSdlInput final : public Input {
@@ -447,6 +490,7 @@ namespace rt {
             i32 ix = i32(x) / scale, iy = i32(y) / scale;
 
             if (SDL_GetMouseFocus()) {
+                last_mouse() = mouse();
                 mouse() = Mouse {
                     ix, iy,
                     (btn & SDL_BUTTON_LMASK) ? true : false,

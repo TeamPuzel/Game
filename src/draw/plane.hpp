@@ -517,6 +517,10 @@ namespace draw {
             return Slice { inner, x, y - offset, w, std::max(0, h + offset * 2) };
         }
 
+        constexpr auto resize(i32 offset) const noexcept -> Slice {
+            return resize_horizontal(offset).resize_vertical(offset);
+        }
+
         constexpr auto shift(i32 off_x, i32 off_y) const noexcept -> Slice {
             return Slice { inner, x + off_x, y + off_y, w, h };
         }
@@ -545,6 +549,14 @@ namespace draw {
 
         constexpr auto tile_ref(i32 x, i32 y) noexcept -> Slice<Ref<T>> {
             return Slice(Ref(inner), x * tile_width, y * tile_height, tile_width, tile_height);
+        }
+
+        constexpr auto ref() noexcept -> Grid<Ref<T>> {
+            return Grid<Ref<T>>(Ref(inner), tile_width, tile_height);
+        }
+
+        constexpr auto ref() const noexcept -> Grid<Ref<const T>> {
+            return Grid<Ref<const T>>(Ref(inner), tile_width, tile_height);
         }
     };
 
@@ -602,8 +614,9 @@ namespace draw {
         };
 
         struct Discard final {
-            template <Plane T> constexpr auto operator()(T& inner) const noexcept {
-                return inner.discard();
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept {
+                i32 w = inner.width(), h = inner.height();
+                return DiscardSlice(std::forward<T>(inner), 0, 0, w, h);
             }
         };
 
@@ -612,6 +625,72 @@ namespace draw {
 
             template <Plane T> constexpr auto operator()(draw::Grid<T> const& self) const noexcept -> draw::Slice<T> {
                 return self.tile(x, y);
+            }
+        };
+
+        struct TileRef final {
+            i32 x, y;
+
+            template <Plane T> constexpr auto operator()(draw::Grid<T> const& self) const noexcept -> draw::Slice<Ref<T>> {
+                return self.tile_ref(x, y);
+            }
+        };
+
+        struct ResizeLeft final {
+            i32 offset;
+
+            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_left(offset);
+            }
+        };
+
+        struct ResizeRight final {
+            i32 offset;
+
+            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_right(offset);
+            }
+        };
+
+        struct ResizeTop final {
+            i32 offset;
+
+            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_top(offset);
+            }
+        };
+
+        struct ResizeBottom final {
+            i32 offset;
+
+            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_bottom(offset);
+            }
+        };
+
+        struct ResizeHorizontal final {
+            i32 offset;
+
+            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_horizontal(offset);
+            }
+        };
+
+        struct ResizeVertical final {
+            i32 offset;
+
+            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_vertical(offset);
+            }
+        };
+
+        struct Resize final {
+            i32 horizontal, vertical;
+
+            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height())
+                    .resize_horizontal(horizontal)
+                    .resize_vertical(vertical);
             }
         };
     }
@@ -657,6 +736,50 @@ namespace draw {
 
     constexpr adapt::Tile tile(i32 x, i32 y) noexcept {
         return adapt::Tile { x, y };
+    }
+
+    constexpr adapt::TileRef tile_ref(i32 x, i32 y) noexcept {
+        return adapt::TileRef { x, y };
+    }
+
+    /// Resizes a drawable's left bound by wrapping it in a slice.
+    constexpr adapt::ResizeLeft resize_left(i32 offset) noexcept {
+        return adapt::ResizeLeft { offset };
+    }
+
+    /// Resizes a drawable's right bound by wrapping it in a slice.
+    constexpr adapt::ResizeRight resize_right(i32 offset) noexcept {
+        return adapt::ResizeRight { offset };
+    }
+
+    /// Resizes a drawable's top bound by wrapping it in a slice.
+    constexpr adapt::ResizeTop resize_top(i32 offset) noexcept {
+        return adapt::ResizeTop { offset };
+    }
+
+    /// Resizes a drawable's bottom bound by wrapping it in a slice.
+    constexpr adapt::ResizeBottom resize_bottom(i32 offset) noexcept {
+        return adapt::ResizeBottom { offset };
+    }
+
+    /// Resizes a drawable horizontally from both sides by wrapping it in a slice.
+    constexpr adapt::ResizeHorizontal resize_horizontal(i32 offset) noexcept {
+        return adapt::ResizeHorizontal { offset };
+    }
+
+    /// Resizes a drawable vertically from both sides by wrapping it in a slice.
+    constexpr adapt::ResizeVertical resize_vertical(i32 offset) noexcept {
+        return adapt::ResizeVertical { offset };
+    }
+
+    /// Resizes a drawable symmetrically on both axes by wrapping it in a slice.
+    constexpr adapt::Resize resize(i32 offset) noexcept {
+        return adapt::Resize { offset, offset };
+    }
+
+    /// Resizes a drawable asymmetrically on both axes by wrapping it in a slice.
+    constexpr adapt::Resize resize(i32 horizontal, i32 vertical) noexcept {
+        return adapt::Resize { horizontal, vertical };
     }
 }
 
@@ -726,8 +849,20 @@ namespace draw {
 
     /// Performs a custom mapping with a provided functor. Can often be used instead of making entirely new drawables.
     /// Receives the color and position, so the signature is `(Color c, i32 x, i32 y) -> Color`
-    template <typename F> constexpr adapt::Map<F> map(F fn) noexcept {
+    template <typename F> constexpr adapt::Map<F> map(F fn) noexcept
+        requires requires(Color c, i32 x, i32 y) { fn(c, x, y); }
+    {
         return adapt::Map<F> { fn };
+    }
+
+    /// Performs a custom mapping with a provided functor. Can often be used instead of making entirely new drawables.
+    /// Receives the color and position, so the signature is `(Color c, i32 x, i32 y) -> Color`
+    template <typename F> constexpr auto map(F fn) noexcept
+        requires requires(Color c) { fn(c); }
+    {
+        return adapt::Map {
+            [fn] (Color c, i32 x, i32 y) { return fn(c); }
+        };
     }
 
     /// Performs a mapping of just the coordinate space.
