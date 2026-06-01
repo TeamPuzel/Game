@@ -913,6 +913,7 @@ namespace rt {
             frame += 1;
         }
     end:
+        ; // MSVC is not standard compliant with C++23 and the parser will die if this semicolon isn't here.
     }
 
     /// Runs a game in the environment.

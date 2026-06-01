@@ -37,7 +37,7 @@ else()
     # /Zi generates debugging information (like -g).
     # /permissive- enforces strict C++ standard conformance (like -Wpedantic).
     # /wd4100 /wd4101 /wd4189 disable specific "unused" warnings.
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /Zi /permissive- /wd4100 /wd4101 /wd4189")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8 /W4 /Zi /permissive- /wd4100 /wd4101 /wd4189")
 
     # /RTC1 enables runtime checks, including catching uninitialized locals by filling them
     # with a pattern (0xCC), which is the MSVC equivalent of -ftrivial-auto-var-init=pattern.
