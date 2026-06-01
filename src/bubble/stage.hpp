@@ -52,7 +52,7 @@ namespace bubble::temp {
             this->speed = speed;
         }
 
-        void update(Io& io, rt::Input const& input, Stage& stage) noexcept override {
+        void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override {
             angle += i32(speed);
 
             position.x = center_x + radius * math::cos(angle);
@@ -75,16 +75,39 @@ namespace bubble::temp {
 }
 
 namespace bubble {
+    class Editor;
+
+    struct Tile final {
+        bool is_empty : 1 = true;
+        u8 id         : 7 = 0;
+
+        enum Wind { Up, Down, Left, Right };
+    };
+
+    static_assert(sizeof(Tile) == 1);
+
     /// A coroutine class representing the state of a loaded stage.
     ///
     /// TODO: Most of the object logic can and probably should be made part of the supertype.
     class Stage final : public Scene {
         std::vector<Box<Object>> objects;
         std::unordered_set<Object*> removal_queue;
-        Object* primary = nullptr;
         usize tick = 0;
+        std::string filename;
+        Grid<Image> sheet;
+        mutable Image nes_target = Image(32 * 8, 30 * 8);
+
+        static constexpr auto WIDTH = 32;
+        static constexpr auto HEIGHT = 30;
+
+        std::array<Tile, WIDTH * HEIGHT> tiles;
 
       public:
+        friend class Editor;
+
+        auto tile(i32 x, i32 y) -> Tile& { return tiles.at(x + y * WIDTH); }
+        auto tile(i32 x, i32 y) const -> Tile const& { return tiles.at(x + y * WIDTH); }
+
         /// Schedules the object for removal at the end of the current update cycle.
         /// It remains valid until then.
         void remove(Object* object) noexcept {
@@ -101,7 +124,13 @@ namespace bubble {
             objects.emplace_back(std::move(object));
         }
 
-        Stage() {}
+        Stage(Io& io, std::string filename, Grid<Image>&& sheet) : filename(filename), sheet(std::move(sheet)) {}
+
+        Stage(Io& io, std::string filename) : Stage(io, filename,
+            draw::TgaImage::from(io.read_file("res/tiles.tga"))
+                | draw::flatten<Image>()
+                | draw::grid(16, 16)
+        ) {}
 
         ~Stage() noexcept {
             // Make sure that we no longer hold on to objects, we can't destroy them after clearing the class loader.
@@ -163,7 +192,7 @@ namespace bubble {
             // - Unchecked access to an invalidated reference shall throw an exception which the stage will catch and
             //   the then immediately terminate the invalid object and any smart references to it.
             // This is the first and yet unimplemented draft of the approach.
-            for (auto const& object : objects) object->update_tree(io, input, *this);
+            for (auto const& object : objects) object->update(io, input, sound, *this);
 
             apply_removal_queue();
 
@@ -171,7 +200,42 @@ namespace bubble {
         }
 
         void draw(Io& io, rt::Input const& input, Ref<Image> target) const override {
-            // Let's just clear the screen here for now.
+            target | draw::clear();
+
+            // NES resolution bounds
+            constexpr i32 nes_width = 32 * 8, nes_height = 30 * 8; // 256x240
+
+            // Figure out the greatest integer scale at which the NES resolution can fit.
+            const i32 scale_x = target.width() / nes_width;
+            const i32 scale_y = target.height() / nes_height;
+
+            // Fall back to a scale of 1 if the screen is smaller than the NES base resolution
+            // to prevent division by zero in MozaicPlane.
+            const i32 scale = std::max(1, std::min(scale_x, scale_y));
+
+            // Center the target area.
+            const i32 scaled_width = nes_width * scale;
+            const i32 scaled_height = nes_height * scale;
+            const i32 offset_x = (target.width() - scaled_width) / 2;
+            const i32 offset_y = (target.height() - scaled_height) / 2;
+
+            draw_viewport(io, input, nes_target | draw::as_ref());
+
+            // As inefficient as this entire process is (we kind of have to do this if we want virtual dispatch later)
+            // the alternative is dispatch on individual pixels which is probably worse.
+            //
+            // Obligatory threading.
+            target | draw::draw_threaded(
+                nes_target
+                    | draw::as_ref()
+                    | draw::scale(scale),
+                offset_x,
+                offset_y
+            );
+        }
+
+        // Inelegant but serviceable indirection to constrain the NES viewport without rewriting the code.
+        void draw_viewport(Io& io, rt::Input const& input, Ref<Image> target) const {
             target | draw::clear();
 
             // Render the game objects.
@@ -190,36 +254,96 @@ namespace bubble {
             const i32 view_min_y = -camera_y - buffer_y;
             const i32 view_max_y = -camera_y + target.height() + buffer_y;
 
+            for (i32 x = 0; x < WIDTH; x += 1) {
+                for (i32 y = 0; y < HEIGHT; y += 1) {
+                    auto id = tile(x, y).id;
+
+                    target | draw::draw(
+                        sheet.tile_ref(-1 + id, 36),
+                        x * 8, y * 8
+                    );
+                }
+            }
+
             for (Box<Object> const& object : objects) {
                 const auto [ox, oy] = object->pixel_pos();
 
                 // TODO: Allow objects a force_draw override.
                 if (ox >= view_min_x and ox <= view_max_x and oy >= view_min_y and oy <= view_max_y) {
                     // Align target with the object origin for relative drawing.
-                    object->draw_tree(target | draw::shift(ox, oy), *this);
+                    object->draw(target | draw::shift(ox, oy), *this);
                 }
             }
         }
 
-        /// Loads a stage from a file using a provided object registry.
-        /// Throws a runtime error if the object class does not exist.
+        /// Loads a stage from a little endian file.
+        ///
+        /// The stage format is very simple:
+        /// - tile array (32 * 30 u8)
+        /// - object count (u32)
+        /// - object array (count Object)
+        ///
+        /// where an Object is:
+        /// - classname (32 char cstring)
+        /// - x (i32)
+        /// - y (i32)
+        /// - userdata (128 u8)
         static auto load(Io& io, std::string_view filename) -> Box<Stage> {
-            auto ret = Box<Stage>::make();
+            auto ret = Box<Stage>::make(io, (std::string) filename);
 
-            // TODO: This temporarily hardcodes the scene.
-            auto player = Box<temp::SpinningPlayerThing>::make(64, 64);
-            player->add(Box<temp::SpinningPlayerThing>::make(0, 0));
-            ret->add(std::move(player));
+            if (auto level_file = io.try_read_file(filename)) {
+                BinaryReader reader { std::span(*level_file) };
+
+                for (u32 i = 0; i < WIDTH * HEIGHT; i += 1) {
+                    ret->tiles[i] = std::bit_cast<Tile>(reader.u8());
+                }
+
+                u32 object_count = reader.u32();
+
+                for (u32 i = 0; i < object_count; i += 1) {
+                    std::string classname = reader.cstr(32);
+                    i32 x = reader.i32();
+                    i32 y = reader.i32();
+
+                    std::array<u8, 128> userdata;
+                    for (u32 i = 0; i < 128; i += 1) userdata[i] = reader.u8();
+
+                    BinaryReader userdata_reader { std::span(userdata) };
+
+                    const auto descriptor = class_loader::load(io, classname);
+                    auto instance = descriptor.deserializer(userdata_reader, x, y);
+                    instance->classname = classname;
+                    ret->objects.emplace_back(std::move(instance));
+                }
+            }
 
             return ret;
         }
 
-        [[gnu::cold]] void hot_reload(Io& io) override {
+      protected:
+        /// Save the file to disk. This is a development feature invoked by the level editor.
+        /// This function tries to write a file so it might throw an `Io::Error`.
+        void store(Io& io) const {
+            std::vector<u8> result;
+            BinaryWriter writer { std::back_inserter(result) };
+
+            for (auto tile : tiles) {
+                writer.u8(std::bit_cast<u8>(tile));
+            }
+
+            writer.u32(0); // TODO: Write objects too.
+
+            io.write_file(filename, result);
+        }
+
+      public:
+        void hot_reload(Io& io) override {
             class_loader::swap_registry();
             for (Box<Object>& object : objects) { // Intentionally mutable for swap
                 if (not object->is_dynobject()) {
                     // We must clear out objects of unknown provenance since they are likely
                     // to come from a dynamic library we are about to drop.
+                    // This is safe because we manually apply the removal queue afterwards.
                     remove(object.raw());
                 } else {
                     auto descriptor = class_loader::load(io, object->classname);
@@ -227,8 +351,6 @@ namespace bubble {
 
                     replacement->position = object->position;
                     replacement->classname = object->classname;
-                    // TODO: Why was this hardcoded to Sonic? :D
-                    if (object->classname == (std::string_view) "Sonic") primary = replacement.raw();
 
                     std::swap(object, replacement);
                 }

@@ -25,24 +25,17 @@ namespace bubble {
     class Object {
         friend class Stage;
 
-      private:
         /// The class name is used to determine the provenance of a dynamic object class.
         /// Effectively it relates it to a dynamic library name.
         ///
         /// This is derived during the deserialization process. Classes constructed otherwise will
         /// have an empty classname which makes their provenance uncertain. For this reason
         /// all unknown objects are erased on reload unless they manually assume a name which is error prone.
-        ///
-        /// The class name is an interned selector to replace RTTI which generally breaks across shared libraries
-        /// (it doesn't on macOS when using Apple's fork of Clang but that's hardly useful).
-        /// Truly the language specification of all time.
-        char const* classname;
+        std::string classname;
 
         auto is_dynobject() const -> bool {
-            return not classname;
+            return not classname.empty();
         }
-
-        std::vector<Box<Object>> children;
 
       protected:
         /// Assumes a classname. Assume the wrong classname and a reload is likely to end in undefined behavior.
@@ -52,7 +45,7 @@ namespace bubble {
         ///
         /// If a classname is already present it does not override it.
         void assume_classname(char const* new_classname) noexcept {
-            if (not classname) classname = new_classname;
+            if (not classname.empty()) classname = new_classname;
         }
 
       public:
@@ -69,57 +62,16 @@ namespace bubble {
 
         /// Called once every tick at 60hz carefully paced in sync with the display clock.
         /// The delta time is effectively constant and can be left out.
-        virtual void update(Io& io, rt::Input const& input, Stage& stage) noexcept {}
+        virtual void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {}
 
         /// Called to draw the object with a target slice offset from the screen by the object position.
         ///
         /// The provided target slice retains the width and height of the scene target, so for objects at the origin
         /// it effectively wraps the scene target transparently in a slice, preserving its category.
-        ///
-        /// TODO: This variant of draw should
         virtual void draw(draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept {}
 
         auto pixel_pos() const noexcept -> math::point<i32> {
             return math::point { i32(position.x), i32(position.y) };
-        }
-
-        // TODO: This should schedule removal like the top level object list to preserve the same semantics.
-        void remove(Object* object) noexcept {
-            std::erase_if(children, [object](Box<Object>& e) { return e.raw() == object; });
-        }
-
-        void add(Box<Object>&& object) noexcept {
-            children.emplace_back(std::move(object));
-        }
-
-      private:
-        /// Recursively draws this object tree.
-        ///
-        /// TODO: This should probably account for the depth index sorting system once implemented.
-        /// TODO: Cute, we're going to have to deserialize trees.
-        void draw_tree(draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept {
-            this->draw(target.shift(i32(position.x), i32(position.y)), stage);
-            for (auto const& child : children)
-                child->draw_tree(target.shift(i32(position.x), i32(position.y)), stage);
-        }
-
-        /// Recursively updates this object tree.
-        void update_tree(Io& io, rt::Input const& input, Stage& stage) noexcept {
-            this->update(io, input, stage);
-            for (auto const& child : children)
-                child->update_tree(io, input, stage);
-        }
-
-      public:
-        /// Provides internal iteration of children.
-        template <typename... Args> void for_children(auto const& fn, Args ...args) {
-            for (auto const& child : children) std::invoke(fn, *child, args...);
-        }
-
-        /// Provides internal iteration of self and children.
-        template <typename... Args> void for_all(auto const& fn, Args ...args) {
-            std::invoke(fn, *this, args...);
-            on_children(fn);
         }
     };
 

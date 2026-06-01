@@ -200,14 +200,14 @@ namespace rt {
     // This is just a temporary packed controller struct for NES games.
     // I don't feel like designing a good, generic controller API for now and this is enough for this game.
     struct [[deprecated]] GamePadState final {
-        bool up     : 1;
-        bool down   : 1;
-        bool left   : 1;
-        bool right  : 1;
-        bool start  : 1;
-        bool select : 1;
-        bool a      : 1;
-        bool b      : 1;
+        bool up     : 1 = false;
+        bool down   : 1 = false;
+        bool left   : 1 = false;
+        bool right  : 1 = false;
+        bool start  : 1 = false;
+        bool select : 1 = false;
+        bool a      : 1 = false;
+        bool b      : 1 = false;
     };
 }
 
@@ -301,6 +301,10 @@ namespace rt::detail {
 }
 
 namespace rt {
+    enum class [[deprecated]] Button : u8 {
+        Up, Down, Left, Right, Start, Select, A, B
+    };
+
     class Input {
         std::optional<Mouse> mouse_state;
         std::unordered_set<KeyState> keys;
@@ -309,6 +313,8 @@ namespace rt {
       protected:
         [[deprecated]] std::optional<GamePadState> pad_0;
         [[deprecated]] std::optional<GamePadState> pad_1;
+        [[deprecated]] std::optional<GamePadState> last_pad_0;
+        [[deprecated]] std::optional<GamePadState> last_pad_1;
 
         void press(Key key) {
             if (auto existing = keys.extract(KeyState::from(key))) {
@@ -372,29 +378,83 @@ namespace rt {
             return poll_counter;
         }
 
-        [[deprecated]] auto gamepad(u8 slot = 0) -> std::optional<GamePadState> {
+        [[deprecated]] auto gamepad(u8 slot = 0) const -> std::optional<GamePadState> {
             switch (slot) {
                 case 0:  return pad_0;
                 case 1:  return pad_1;
                 default: return std::nullopt;
             }
         }
+
+        [[deprecated]] auto last_gamepad(u8 slot = 0) const -> std::optional<GamePadState> {
+            switch (slot) {
+                case 0:  return last_pad_0;
+                case 1:  return last_pad_1;
+                default: return std::nullopt;
+            }
+        }
+
+        [[deprecated]] auto gamepad_pressed(Button button, u8 slot = 0) const -> bool {
+            switch (button) {
+                case Button::Up:     return gamepad(slot).value_or(GamePadState()).up
+                                        and not last_gamepad(slot).value_or(GamePadState()).up;
+                case Button::Down:   return gamepad(slot).value_or(GamePadState()).down
+                                        and not last_gamepad(slot).value_or(GamePadState()).down;
+                case Button::Left:   return gamepad(slot).value_or(GamePadState()).left
+                                        and not last_gamepad(slot).value_or(GamePadState()).left;
+                case Button::Right:  return gamepad(slot).value_or(GamePadState()).right
+                                        and not last_gamepad(slot).value_or(GamePadState()).right;
+                case Button::Start:  return gamepad(slot).value_or(GamePadState()).start
+                                        and not last_gamepad(slot).value_or(GamePadState()).start;
+                case Button::Select: return gamepad(slot).value_or(GamePadState()).select
+                                        and not last_gamepad(slot).value_or(GamePadState()).select;
+                case Button::A:      return gamepad(slot).value_or(GamePadState()).a
+                                        and not last_gamepad(slot).value_or(GamePadState()).a;
+                case Button::B:      return gamepad(slot).value_or(GamePadState()).b
+                                        and not last_gamepad(slot).value_or(GamePadState()).b;
+            }
+        }
+
+        [[deprecated]] auto gamepad_held(Button button, u8 slot = 0) const -> bool {
+            switch (button) {
+                case Button::Up:     return gamepad(slot).value_or(GamePadState()).up;
+                case Button::Down:   return gamepad(slot).value_or(GamePadState()).down;
+                case Button::Left:   return gamepad(slot).value_or(GamePadState()).left;
+                case Button::Right:  return gamepad(slot).value_or(GamePadState()).right;
+                case Button::Start:  return gamepad(slot).value_or(GamePadState()).start;
+                case Button::Select: return gamepad(slot).value_or(GamePadState()).select;
+                case Button::A:      return gamepad(slot).value_or(GamePadState()).a;
+                case Button::B:      return gamepad(slot).value_or(GamePadState()).b;
+            }
+        }
     };
 
     class ManagedSdlInput final : public Input {
         std::array<SDL_Gamepad*, 2> sdl_pad;
+        i32 scale;
 
       public:
+        explicit ManagedSdlInput(i32 scale) : scale(scale) {}
+
+        void rescale(i32 scale) {
+            this->scale = scale;
+        }
+
         void poll() {
             // TODO: Apply scale to mouse input. Unused in this game anyway so it's whatever.
             f32 x, y;
             auto btn = SDL_GetMouseState(&x, &y);
-            i32 ix = i32(x), iy = i32(y);
-            mouse() = Mouse {
-                ix, iy,
-                (btn & SDL_BUTTON_LMASK) ? true : false,
-                (btn & SDL_BUTTON_RMASK) ? true : false,
-            };
+            i32 ix = i32(x) / scale, iy = i32(y) / scale;
+
+            if (SDL_GetMouseFocus()) {
+                mouse() = Mouse {
+                    ix, iy,
+                    (btn & SDL_BUTTON_LMASK) ? true : false,
+                    (btn & SDL_BUTTON_RMASK) ? true : false,
+                };
+            } else {
+                mouse() = std::nullopt;
+            }
 
             for (const auto key : all_keys()) {
                 if (detail::get_key(key)) {
@@ -442,8 +502,8 @@ namespace rt {
                     };
                 };
 
-                pad_0 = get_pad_state(sdl_pad[0]);
-                pad_1 = get_pad_state(sdl_pad[1]);
+                last_pad_0 = pad_0; pad_0 = get_pad_state(sdl_pad[0]);
+                last_pad_1 = pad_1; pad_1 = get_pad_state(sdl_pad[1]);
             }
 
             advance_counter();
@@ -458,8 +518,8 @@ namespace rt {
 
     /// Returns a concrete subtype of Input with a managed `poll()` interface.
     /// The exact type could change in the future.
-    inline auto input() {
-        return ManagedSdlInput {};
+    inline auto input(i32 scale) {
+        return ManagedSdlInput(scale);
     }
 
     inline auto timestamp() -> f64 {
@@ -638,7 +698,7 @@ namespace rt {
             is_running.store(true);
         }
 
-        if (not SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
+        if (not SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD)) {
             throw RunError {
                 RunError::Reason::CouldNotInitializeSdl,
                 SDL_GetError(),
@@ -706,6 +766,14 @@ namespace rt {
         };
         resize_texture(width / scale, height / scale);
 
+        SDL_AudioSpec audio_spec = {
+            .format = SDL_AUDIO_F32,
+            .channels = 1,
+            .freq = 48000
+        };
+        auto audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, nullptr, nullptr);
+        if (audio_stream) SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(audio_stream));
+
         SdlIo io;
         Io::unsafe_push_threadlocal_io(&io);
 
@@ -718,6 +786,7 @@ namespace rt {
         // with deleters but that's rather unreadable.
         ScopeExit scope_exit = [=] {
             Io::unsafe_pop_threadlocal_io();
+            if (audio_stream) SDL_DestroyAudioStream(audio_stream);
             SDL_DestroyTexture(texture);
             SDL_DestroyRenderer(renderer);
             SDL_DestroyWindow(window);
@@ -729,10 +798,10 @@ namespace rt {
 
         SDL_Event event;
         usize frame = 0;
-        bool perf_overlay = true;
+        bool perf_overlay = false;
         bool heuristic_rate_lock = true;
         auto target = draw::Image(width / scale, height / scale);
-        auto input = rt::input();
+        auto input = rt::input(scale);
         auto rate = rt::refresh_rate_lock();
 
         const auto apply_window_size = [&] {
@@ -744,6 +813,7 @@ namespace rt {
             i32 w, h; SDL_GetWindowSize(window, &w, &h);
             resize_texture(w / scale, h / scale);
             target.resize(w / scale, h / scale);
+            input.rescale(scale);
         };
 
         while (true) {
@@ -798,6 +868,26 @@ namespace rt {
                 }
 
                 game.update(io, input, sound_stage);
+
+                // I hate this code, I remember getting buffers to output correctly
+                if (audio_stream) {
+                    // Find out how many samples SDL currently has queued
+                    i32 available_audio_samples = SDL_GetAudioStreamAvailable(audio_stream) / sizeof(f32);
+                    // We target keeping exactly 4800 samples queued at all times
+                    i32 samples_to_push = 4800 - available_audio_samples;
+
+                    if (samples_to_push > 0) {
+                        // Clamp just in case, though it shouldn't normally exceed 4800.
+                        samples_to_push = std::min(samples_to_push, 4800);
+                        // Evaluate the 4800-sample window from the current time_point.
+                        auto output = sound_stage.finalize();
+                        // Push exactly what is missing from the START of our generated window.
+                        SDL_PutAudioStreamData(audio_stream, output.data, samples_to_push * sizeof(f32));
+                        // Advance the SoundStage timeline by exactly what we appended to the queue.
+                        // Next frame, SoundStage will seamlessly pick up exactly where we left off.
+                        sound_stage.advance_time_and_clear_buffer(samples_to_push);
+                    }
+                }
             });
             game.draw(io, input, target);
             if (perf_overlay) draw_perf_overlay();

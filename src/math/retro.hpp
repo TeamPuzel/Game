@@ -29,6 +29,8 @@ namespace math {
         }
     };
 
+    /// Classic Sonic angle math.
+    ///
     /// The original game uses 8 bit angles ranged 0...255 rather than 0...359.
     /// Thanks to that decision angle semantics were already provided to us by the CPU itself.
     ///

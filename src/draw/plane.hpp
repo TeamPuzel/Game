@@ -1,67 +1,8 @@
 // Created by Lua (TeamPuzel) on May 29th 2025.
 // Copyright (c) 2025 All rights reserved.
 //
-// NOTE: I renamed the concepts at play but the documentation refers to things by their old names for now.
-// Drawable -> Plane
-// SizedDrawable -> SizedPlane
-// PrimitiveDrawable -> PrimitivePlane
-// MutableDrawable -> MutablePlane
-//
-// Sorry about that :)
-//
-// This is the main file of the draw abstraction which actually deals with drawing.
-// It is an efficient, portable, functional approach to pixel transformations without the need for hardware acceleration.
-// That being said, through overloading would is possible to get this design hardware accelerated for whatever reason.
-//
-// I ported this style of graphics abstraction to various languages, originally written in Swift it has
-// ports to Rust and Kotlin, but besides Swift and to some extent Rust most languages are unable to fully
-// express the complex type relationships seen here, especially in an efficient way.
-//
-// C++ can't really express this well (efficiently) with it's eagerly virtual type system, but abusive techniques
-// like SFINAE (through enable_if) or concepts in newer versions of C++ can get the job done.
-// The syntax can also compose somewhat decently by... adapting... the idea of std::ranges adapters.
-//
-// Do NOT inherit from the dyn namespace directly because C++ compilers will NOT devirtualize a thing, negating the benefits
-// of using SFINAE/concepts for this in the first place.
-// Instead, the convention is to implement existential containers separately, through an instance.dyn() call.
-//
-// There are some laws associated with the protocols of this library.
-// Understanding the simple ideas is important because these types are a lot more fault-tolerant than conventional collections.
-//
-// The main protocols are:
-//
-// - Drawable, an infinite plane of pixels which one can get.
-//     Usually not used in isolation, this is the core idea of the system. An infinite plane.
-//
-// - SizedDrawable, a refinement of Drawable bundling it with a width and a height.
-//     Most commonly used, this represents slices of infinite planes. Crucial for actually evaluating (rendering) them.
-//
-// - MutableDrawable, a refinement of Drawable allowing pixels to be set.
-//     Quite self explanatory, an infinite plane which can be mutated (almost always combined with a Sized requirement).
-//
-// - PrimitiveDrawable, a refinement of SizedDrawable which can losslessly be flattened into from another one.
-//     This represents primitives, actual concrete roots of a drawable expression, like the Image or InfiniteImage types.
-//
-// Drawables are structurally equal, implementations of equality and hashing must take into account
-// the exact value of every single pixel. Optimizations are allowed, like two red rectangles of the same size
-// being equal just by comparing those parameters rather than computing them for each pixel, but this
-// MUST preserve the structure. Specifically:
-// (a == b) == (flatten(a) == flatten(b))
-//
-// Drawables are safe to index out of bounds. They can choose how to handle this but they are all a description
-// of infinite space with pixel precision. Sized drawables are merely views into an infinite world.
-// This has important usability consequences when composing drawables, greatly increasing their expressive power
-// For example one can shift a sized slice or resize it. This fault-tolerance is very convenient.
-//
-// Previously, Drawable was the name of the protocol now known as SizedDrawable, but this added complexity
-// turns out to enable a lot of powerful features such as infinite mutable planes implementable through storing
-// themselves in chunks.
-// In fact, you could think of a stage in a game as a Drawable, it is not inherently possible to draw
-// but it is an infinite composition of other drawables one can slice to implement a camera.
-//
-// HardwareDrawables are a refinement which is meant to be used directly on a hybrid context of some sort
-// but they are currently unimplemented simply because it's not worth it at low resolutions like the sonic game,
-// and I have absolutely no intention of using C++ for 2d games ever again, it is not a great fit.
+// Yet another port of my Swift/Rust/Kotlin graphics library. The approach is viable in C++ but extremely verbose.
+// It's kind of like std::ranges but for graphics I guess, though less esoteric to extend.
 #pragma once
 #include <concepts>
 #include <primitive>
@@ -72,18 +13,6 @@
 #include "color.hpp"
 
 namespace draw {
-    enum class Origin {
-        Center,
-        Left,
-        Right,
-        Top,
-        Bottom,
-        TopLeft,
-        TopRight,
-        BottomLeft,
-        BottomRight,
-    };
-
     template <typename Self> concept Plane = requires(Self const& self, i32 x, i32 y) {
         { self.get(x, y) } -> std::same_as<Color>;
     };
@@ -100,10 +29,40 @@ namespace draw {
     template <typename Self, typename From> concept PrimitivePlane = SizedPlane<From> and requires(From const& other) {
         { Self::flatten(other) } -> std::same_as<Self>;
     };
+
+    template <typename Self> concept SizedMutablePlane = SizedPlane<Self> and MutablePlane<Self>;
+
+    enum class Origin {
+        Center,
+        Left,
+        Right,
+        Top,
+        Bottom,
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight,
+    };
+
+    struct Offset final { i32 x, y; };
+
+    auto offset_for(Origin origin, SizedPlane auto const& plane) -> Offset {
+        switch (origin) {
+            case Origin::Center:      return { .x = plane.width() / 2, .y = plane.height() / 2 };
+            case Origin::Left:        return { .x = 0,                 .y = plane.height() / 2 };
+            case Origin::Right:       return { .x = plane.width() - 1, .y = plane.height() / 2 };
+            case Origin::Top:         return { .x = plane.width() / 2, .y = 0                  };
+            case Origin::Bottom:      return { .x = plane.width() / 2, .y = plane.height() - 1 };
+            case Origin::TopLeft:     return { .x = 0,                 .y = 0                  };
+            case Origin::TopRight:    return { .x = plane.width() - 1, .y = 0                  };
+            case Origin::BottomLeft:  return { .x = 0,                 .y = plane.height() - 1 };
+            case Origin::BottomRight: return { .x = plane.width() - 1, .y = plane.height() - 1 };
+        }
+    }
 }
 
 /// Performs forwarding adapter composition. Based on the design of std::ranges.
-template <typename Self, typename Adapt> [[clang::always_inline]]
+template <draw::Plane Self, typename Adapt> [[clang::always_inline]]
 constexpr auto operator|(Self&& self, Adapt&& adapt) noexcept(noexcept(std::forward<Adapt>(adapt)(std::forward<Self>(self))))
     -> decltype(std::forward<Adapt>(adapt)(std::forward<Self>(self)))
 {
@@ -315,6 +274,21 @@ namespace draw {
             }
         };
 
+        template <SizedPlane D, typename Blend> struct OriginDraw final {
+            D const& drawable;
+            Origin from, at;
+            Blend blend_mode;
+
+            constexpr OriginDraw(D const& drawable, Origin from, Origin at, Blend blend_mode)
+                : drawable(drawable), from(from), at(at), blend_mode(blend_mode) {}
+
+            template <typename T> constexpr T& operator()(T& self) const requires SizedPlane<T> and MutablePlane<T> {
+                auto [x, y] = offset_for(at, self);
+                auto offset = offset_for(from, drawable);
+                return Draw(drawable, x - offset.x, y - offset.y, blend_mode)(self);
+            }
+        };
+
         template <SizedPlane D, typename Blend> struct ThreadedDraw final {
             D const& drawable;
             i32 x, y;
@@ -378,6 +352,22 @@ namespace draw {
         return adapt::Draw { drawable, 0, 0, blend::binary };
     }
 
+    template <typename D, typename Blend> constexpr adapt::OriginDraw<D, Blend> draw(D const& drawable, Origin from, Origin at, Blend blend_mode) {
+        return adapt::OriginDraw { drawable, from, at, blend_mode };
+    }
+
+    template <typename D> constexpr adapt::OriginDraw<D, decltype(&blend::binary)> draw(D const& drawable, Origin from, Origin at) {
+        return adapt::OriginDraw { drawable, from, at, blend::binary };
+    }
+
+    template <typename D, typename Blend> constexpr adapt::OriginDraw<D, Blend> draw(D const& drawable, Origin aligning, Blend blend_mode) {
+        return adapt::OriginDraw { drawable, aligning, aligning, blend_mode };
+    }
+
+    template <typename D> constexpr adapt::OriginDraw<D, decltype(&blend::binary)> draw(D const& drawable, Origin aligning) {
+        return adapt::OriginDraw { drawable, aligning, aligning, blend::binary };
+    }
+
     template <SizedPlane D, typename Blend> constexpr adapt::ThreadedDraw<D, Blend> draw_threaded(D const& drawable, i32 x, i32 y, Blend blend_mode) {
         return adapt::ThreadedDraw { drawable, x, y, blend_mode };
     }
@@ -401,7 +391,7 @@ namespace draw {
     template <Plane T> struct Ref final {
         T& inner;
 
-        constexpr Ref(T& inner) : inner(inner) {}
+        constexpr explicit(false) Ref(T& inner) : inner(inner) {}
 
         constexpr auto width() const noexcept(noexcept(inner.width())) -> i32 requires SizedPlane<T> {
             return inner.width();
@@ -417,6 +407,65 @@ namespace draw {
 
         constexpr void set(i32 x, i32 y, Color color) noexcept(noexcept(inner.set(x, y, color))) requires MutablePlane<T> {
             inner.set(x, y, color);
+        }
+    };
+
+    template <Plane T> class DiscardSlice final {
+        T inner;
+        i32 x, y, w, h;
+
+      public:
+        constexpr explicit DiscardSlice(T inner, i32 x, i32 y, i32 width, i32 height) noexcept
+            : inner(inner), x(x), y(y), w(width), h(height) {}
+
+        constexpr auto get(i32 x, i32 y) const noexcept(noexcept(inner.get(this->x + x, this->y + y))) -> Color {
+            if (x >= 0 and x < w and y >= 0 and y < h) {
+                return inner.get(this->x + x, this->y + y);
+            } else {
+                return color::CLEAR;
+            }
+        }
+
+        constexpr void set(i32 x, i32 y, Color color) noexcept(noexcept(inner.set(this->x + x, this->y + y, color))) {
+            if (x >= 0 and x < w and y >= 0 and y < h) {
+                inner.set(this->x + x, this->y + y, color);
+            }
+        }
+
+        constexpr auto width() const noexcept -> i32 {
+            return w;
+        }
+
+        constexpr auto height() const noexcept -> i32 {
+            return h;
+        }
+
+        constexpr auto resize_left(i32 offset) const noexcept -> DiscardSlice {
+            return DiscardSlice { inner, x - offset, y, std::max(0, w + offset), h };
+        }
+
+        constexpr auto resize_right(i32 offset) const noexcept -> DiscardSlice {
+            return DiscardSlice { inner, x, y, std::max(0, w + offset), h };
+        }
+
+        constexpr auto resize_top(i32 offset) const noexcept -> DiscardSlice {
+            return DiscardSlice { inner, x, y - offset, w, std::max(0, h + offset) };
+        }
+
+        constexpr auto resize_bottom(i32 offset) const noexcept -> DiscardSlice {
+            return DiscardSlice { inner, x, y, w, std::max(0, h + offset) };
+        }
+
+        constexpr auto resize_horizontal(i32 offset) const noexcept -> DiscardSlice {
+            return DiscardSlice { inner, x - offset, y, std::max(0, w + offset * 2), h };
+        }
+
+        constexpr auto resize_vertical(i32 offset) const noexcept -> DiscardSlice {
+            return DiscardSlice { inner, x, y - offset, w, std::max(0, h + offset * 2) };
+        }
+
+        constexpr auto shift(i32 off_x, i32 off_y) const noexcept -> DiscardSlice {
+            return DiscardSlice { inner, x + off_x, y + off_y, w, h };
         }
     };
 
@@ -471,6 +520,11 @@ namespace draw {
         constexpr auto shift(i32 off_x, i32 off_y) const noexcept -> Slice {
             return Slice { inner, x + off_x, y + off_y, w, h };
         }
+
+        /// Convert to a slice which discards out of bounds access instead of forwarding it.
+        constexpr auto discard() const noexcept -> DiscardSlice<T> {
+            return DiscardSlice { inner, x, y, w, h };
+        }
     };
 
     template <Plane T> struct Grid final {
@@ -479,10 +533,18 @@ namespace draw {
 
       public:
         constexpr explicit Grid(T inner, i32 tile_width, i32 tile_height) noexcept
-            : inner(inner), tile_width(tile_width), tile_height(tile_height) {}
+            : inner(std::move(inner)), tile_width(tile_width), tile_height(tile_height) {}
 
         constexpr auto tile(i32 x, i32 y) const noexcept -> Slice<T> {
             return Slice(inner, x * tile_width, y * tile_height, tile_width, tile_height);
+        }
+
+        constexpr auto tile_ref(i32 x, i32 y) const noexcept -> Slice<Ref<const T>> {
+            return Slice(Ref(inner), x * tile_width, y * tile_height, tile_width, tile_height);
+        }
+
+        constexpr auto tile_ref(i32 x, i32 y) noexcept -> Slice<Ref<T>> {
+            return Slice(Ref(inner), x * tile_width, y * tile_height, tile_width, tile_height);
         }
     };
 
@@ -499,7 +561,7 @@ namespace draw {
             i32 tile_width, tile_height;
 
             template <Plane T> constexpr auto operator()(T inner) const noexcept -> draw::Grid<T> {
-                return draw::Grid<T>(inner, tile_width, tile_height);
+                return draw::Grid<T>(std::move(inner), tile_width, tile_height);
             }
         };
 
@@ -527,9 +589,21 @@ namespace draw {
             }
         };
 
+        struct Move final {
+            template <Plane T> constexpr auto operator()(T&& inner) const noexcept -> T&& {
+                return std::move(inner);
+            }
+        };
+
         struct AsConst final {
             template <Plane T> constexpr auto operator()(T& inner) const noexcept -> T const& {
                 return inner;
+            }
+        };
+
+        struct Discard final {
+            template <Plane T> constexpr auto operator()(T& inner) const noexcept {
+                return inner.discard();
             }
         };
 
@@ -569,8 +643,16 @@ namespace draw {
         return adapt::AsRef {};
     }
 
+    constexpr adapt::Move move() noexcept {
+        return adapt::Move {};
+    }
+
     constexpr adapt::AsConst as_const() noexcept {
         return adapt::AsConst {};
+    }
+
+    constexpr adapt::Discard discard() noexcept {
+        return adapt::Discard {};
     }
 
     constexpr adapt::Tile tile(i32 x, i32 y) noexcept {
@@ -1019,6 +1101,30 @@ namespace draw {
         }
     };
 
+    template <Plane T> struct MozaicPlane final {
+        T inner;
+        i32 scale;
+
+        constexpr explicit MozaicPlane(T inner, i32 scale) noexcept
+            : inner(inner), scale(scale) {}
+
+        constexpr auto width() const noexcept(noexcept(inner.width())) -> i32 {
+            return inner.width() / scale;
+        }
+
+        constexpr auto height() const noexcept(noexcept(inner.height())) -> i32 {
+            return inner.height() / scale;
+        }
+
+        constexpr auto get(i32 x, i32 y) const noexcept(noexcept(inner.get(x, y))) -> Color {
+            return inner.get(x * scale, y * scale);
+        }
+
+        constexpr void set(i32 x, i32 y, Color color) noexcept(noexcept(inner.set(x, y, color))) {
+            inner.set(x * scale, y * scale, color);
+        }
+    };
+
     namespace adapt {
         template <const MirrorAxis AXIS> struct Mirror final {
             template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> MirroredPlane<AXIS, T> {
@@ -1049,6 +1155,14 @@ namespace draw {
                 return ScaledPlane(inner, scale);
             }
         };
+
+        struct Mozaic final {
+            i32 scale;
+
+            template <Plane T> constexpr auto operator()(T inner) const noexcept -> MozaicPlane<T> {
+                return MozaicPlane(inner, scale);
+            }
+        };
     }
 
     /// Mirrors the drawable in terms of its sized area on the x axis.
@@ -1073,5 +1187,14 @@ namespace draw {
 
     constexpr adapt::Scale scale(i32 scale) noexcept {
         return adapt::Scale { scale };
+    }
+
+    /// An inversly scaled plane. Viewing a plane through a mozaic makes it seem smaller by the scale value,
+    /// and the sampling becomes sparse and truncated. Writing sets entire chunks of pixels.
+    ///
+    /// A mozaic can be used as an interestic graphical effect or a quick way to draw at a lower resolution into
+    /// what would otherwise be a higher resolution plane.
+    constexpr adapt::Mozaic mozaic(i32 scale) noexcept {
+        return adapt::Mozaic { scale };
     }
 }

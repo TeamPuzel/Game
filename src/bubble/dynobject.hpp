@@ -15,7 +15,7 @@
 // This is not for use in headers but rather the object entry point to expose it
 // from the shared object file.
 //
-// This very elaborate (weird) with member pointers. Oh well. I don't feel like
+// This very elaborate (weird) with member pointers which are actually fat on the MSVC ABI. Oh well. I don't feel like
 // bothering to handle the botched variance in the Microsoft's implementation (C++ is such a well standardized language)
 // The serializer will just be static instead of a member. Whatever. I hate this language.
 #define EXPORT_GAME_OBJECT(CLASSNAME)                                 \

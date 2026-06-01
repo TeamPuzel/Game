@@ -24,8 +24,18 @@ namespace draw {
 
         Image(Image const&) = delete;
         auto operator=(Image const&) -> Image& = delete;
-        Image(Image&&) = default;
-        auto operator=(Image&&) -> Image& = default;
+
+        Image(Image&& other) noexcept
+            : data(std::move(other.data)), w(std::exchange(other.w, 0)), h(std::exchange(other.h, 0)) {}
+
+        auto operator=(Image&& other) noexcept -> Image& {
+            if (this != &other) {
+                data = std::move(other.data);
+                w = std::exchange(other.w, 0);
+                h = std::exchange(other.h, 0);
+            }
+            return *this;
+        }
 
         /// Initializes the image with the provided function of signature:
         /// (x: i32, y: i32) -> Color
@@ -34,7 +44,7 @@ namespace draw {
             data.resize(width * height);
             for (i32 x = 0; x < width; x += 1) {
                 for (i32 y = 0; y < height; y += 1) {
-                    data.at(x + y * width) = init(x, y);
+                    data[x + y * width] = init(x, y);
                 }
             }
         }

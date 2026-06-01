@@ -1,3 +1,4 @@
+#pragma once
 #include <primitive>
 #include "image.hpp"
 
@@ -38,8 +39,15 @@ namespace draw {
         }
 
       public:
-        VStack(VAlignment alignment, i32 spacing, T... planes) : inner(std::pair { planes, Position { 0, 0 } }...) {
-            width_cache = std::max({ planes.width()... });
+        VStack(VAlignment alignment, i32 spacing, T... planes)
+            : inner(std::pair { std::move(planes), Position { 0, 0 } }...)
+        {
+            if constexpr (sizeof...(T) > 0) {
+                width_cache = std::apply([](auto const&... e) { return std::max({ e.first.width()... }); }, inner);
+            } else {
+                width_cache = 0;
+            }
+
             height_cache = 0;
 
             i32 cursor_y = 0;
@@ -62,9 +70,9 @@ namespace draw {
             });
         }
 
-        VStack(T... planes) : VStack(VAlignment::Center, 0, planes...) {}
-        VStack(VAlignment alignment, T... planes) : VStack(alignment, 0, planes...) {}
-        VStack(i32 spacing, T... planes) : VStack(VAlignment::Center, spacing, planes...) {}
+        VStack(T... planes) : VStack(VAlignment::Center, 0, std::move(planes)...) {}
+        VStack(VAlignment alignment, T... planes) : VStack(alignment, 0, std::move(planes)...) {}
+        VStack(i32 spacing, T... planes) : VStack(VAlignment::Center, spacing, std::move(planes)...) {}
 
         auto width() const -> i32 {
             return width_cache;

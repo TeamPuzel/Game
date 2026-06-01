@@ -6,7 +6,7 @@ namespace bubble {
       public:
         enum class Character : u8 { Bub, Bob } character = Character::Bub;
 
-        void update(Io& io, rt::Input const& input, Stage& stage) noexcept override {
+        void update(Io& io, rt::Input const& input, rt::SoundStage&, Stage& stage) noexcept override {
 
         }
 

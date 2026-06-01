@@ -6,6 +6,7 @@
 #include <vector>
 #include <span>
 #include <ranges>
+#include <optional>
 
 /// Encapsulates all global side effects.
 ///
@@ -92,6 +93,10 @@ class Io {
 
     auto read_file(std::string_view path) -> std::vector<u8> {
         return perform_read_file(path.data());
+    }
+
+    auto try_read_file(std::string_view path) -> std::optional<std::vector<u8>> {
+        try { return read_file(path); } catch (Error& e) { return std::nullopt; }
     }
 
     void write_file(std::string_view path, std::span<u8> data) {

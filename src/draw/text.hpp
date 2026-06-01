@@ -11,6 +11,7 @@
 #include "color.hpp"
 #include "plane.hpp"
 #include "image.hpp"
+#include "stack.hpp"
 
 namespace draw {
     template <Plane T> struct Symbol final {
@@ -138,6 +139,7 @@ namespace draw {
 
         StringView content;
         Color color;
+        VAlignment alignment;
         Font<T, Char> font;
 
       private:
@@ -169,6 +171,14 @@ namespace draw {
             i32 cursor_y = 0;
             for (auto line : lines()) {
                 i32 cursor_x = 0;
+                i32 line_w = line_width(line);
+
+                switch (alignment) {
+                    case VAlignment::Center: cursor_x = (width_cache - line_w) / 2; break;
+                    case VAlignment::Left:   cursor_x = 0;                          break;
+                    case VAlignment::Right:  cursor_x = width_cache - line_w;       break;
+                }
+
                 for (Char c : line) {
                     auto sym = font.symbol(c);
                     switch (sym.type) {
@@ -194,8 +204,12 @@ namespace draw {
         }
 
       public:
-        MultilineText(StringView content, Font<T, Char> font, Color color = color::WHITE)
-            : content(content), color(color), font(font)
+        MultilineText(
+            StringView content, Font<T, Char> font,
+            Color color = color::WHITE,
+            VAlignment alignment = VAlignment::Left
+        )
+            : content(content), color(color), alignment(alignment), font(font)
         {
             i32 max_width = 0;
             i32 line_count = 0;
@@ -209,6 +223,11 @@ namespace draw {
                 ? 0
                 : line_count * font.height + (line_count - 1) * font.leading;
         }
+
+        MultilineText(
+            StringView content, Font<T, Char> font,
+            VAlignment alignment
+        ) : MultilineText(content, font, color::WHITE, alignment) {}
 
         auto width() const -> i32 {
             return width_cache;
@@ -224,7 +243,11 @@ namespace draw {
         }
     };
 
-    template <typename T> MultilineText(char const*, Font<T, char>, Color = color::WHITE) -> MultilineText<T, std::string_view>;
+    template <typename T> MultilineText(
+        char const*, Font<T, char>, Color = color::WHITE, VAlignment = VAlignment::Left
+    ) -> MultilineText<T, std::string_view>;
+
+    template <typename T> MultilineText(char const*, Font<T, char>, VAlignment) -> MultilineText<T, std::string_view>;
 
     static_assert(SizedPlane<MultilineText<Image>>);
 

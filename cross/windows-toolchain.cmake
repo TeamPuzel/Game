@@ -26,7 +26,7 @@ set(WIN_SDK_DIR "/Users/teampuzel/CXX/WINLIB/sdk" CACHE PATH "Path to the window
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Xlinker /ENTRY:mainCRTStartup")
 add_compile_definitions(SDL_MAIN_HANDLED)
 
-include_directories(
+include_directories(SYSTEM
     "${MSVC_DIR}/include"
     "${WIN_SDK_DIR}/Include/10.0.26100.0/um"
     "${WIN_SDK_DIR}/Include/10.0.26100.0/ucrt"
