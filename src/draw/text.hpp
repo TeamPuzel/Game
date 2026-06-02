@@ -130,6 +130,8 @@ namespace draw {
 
     template <typename T> Text(char const*, Font<T, char>, Color = color::WHITE) -> Text<T, std::string_view>;
 
+    template <typename T> Text(std::string, Font<T, char>, Color = color::WHITE) -> Text<T, std::string>;
+
     static_assert(SizedPlane<Text<Image>>);
 
     // TODO: Alignment
@@ -248,6 +250,12 @@ namespace draw {
     ) -> MultilineText<T, std::string_view>;
 
     template <typename T> MultilineText(char const*, Font<T, char>, VAlignment) -> MultilineText<T, std::string_view>;
+
+    template <typename T> MultilineText(
+        std::string, Font<T, char>, Color = color::WHITE, VAlignment = VAlignment::Left
+    ) -> MultilineText<T, std::string>;
+
+    template <typename T> MultilineText(std::string, Font<T, char>, VAlignment) -> MultilineText<T, std::string>;
 
     static_assert(SizedPlane<MultilineText<Image>>);
 
@@ -398,6 +406,9 @@ namespace draw {
 
     template <typename T> WrappingText(char const*, Font<T, char>, i32, Color = color::WHITE) -> WrappingText<T, std::string_view>;
     template <typename T> WrappingText(char const*, Font<T, char>, Color = color::WHITE) -> WrappingText<T, std::string_view>;
+
+    template <typename T> WrappingText(std::string, Font<T, char>, i32, Color = color::WHITE) -> WrappingText<T, std::string>;
+    template <typename T> WrappingText(std::string, Font<T, char>, Color = color::WHITE) -> WrappingText<T, std::string>;
 
     static_assert(SizedPlane<MultilineText<Image>>);
 }

@@ -14,7 +14,11 @@
 #include "class_loader.hpp"
 
 namespace bubble {
-    class Editor;
+    enum class GameMode {
+        OnePlayer,
+        TwoPlayer,
+        TwoPlayerVersus
+    };
 
     struct Tile final {
         u8 id      : 5 = 0;
@@ -55,10 +59,17 @@ namespace bubble {
 
         mutable Image nes_target = Image(32 * 8, 30 * 8);
 
-        static constexpr auto WIDTH = 32;
-        static constexpr auto HEIGHT = 30;
+        static constexpr auto WIDTH      = 32;
+        static constexpr auto HEIGHT     = 30;
+        static constexpr auto START_TICK = 9 * 60; // 7-8 if the intro has a transition, 9 if not.
 
         std::array<Tile, WIDTH * HEIGHT> tiles;
+
+        GameMode mode;
+        u8 bub_lives = 2;
+        u8 bob_lives = 2;
+        u32 bub_score = 0;
+        u32 bob_score = 0;
 
         u8 stage_index = 1;
         bool editor_mode = false;
@@ -175,8 +186,8 @@ namespace bubble {
             });
         }
 
-        Stage(Io& io, u8 index, Grid<Image>&& sheet, bool start_as_editor = false)
-            : sheet(std::move(sheet)), stage_index(index), editor_mode(start_as_editor) {}
+        Stage(Io& io, u8 index, Grid<Image>&& sheet, GameMode mode, bool start_as_editor = false)
+            : sheet(std::move(sheet)), mode(mode), stage_index(index), editor_mode(start_as_editor) {}
 
         ~Stage() noexcept {
             // Make sure that we no longer hold on to objects, we can't destroy them after clearing the class loader.
@@ -215,6 +226,8 @@ namespace bubble {
         }
 
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
+            if (editor_mode) tick = START_TICK;
+
             if (input.key_pressed(rt::Key::Tab)) editor_mode = not editor_mode;
 
             if (editor_mode) {
@@ -335,31 +348,15 @@ namespace bubble {
                 return; // Stop updates while editing.
             }
 
-            // The semantics are defined such that we handle collision first in sorting order on all active objects.
-            // Updates follow in the same order but after all the collision. We iterate twice.
-            // Also, the time complexity is silly here *but* it's just nearby objects so we should never hit
-            // any actual scaling issues.
-            //
-            // There is a lifetime concern here. Remember that objects should be able to schedule themselves
-            // for removal at the end of the update process, but must not be removed during the update
-            // process itself.
-            //
-            // It is however unsound for any objects to ever reference each other directly at all. The reasons are many:
-            // - Have fun serializing insane graphs.
-            // - Lifetime and shared mutable state issues.
-            //
-            // For this reason, if any objects ever need to explicitly hold on to other objects between cycles,
-            // a reference counting scheme shall be used:
-            // - Smart, typed references can be requested from the stage.
-            // - This smart (uniquely owned) reference object will internally hold on to the stage.
-            // - When the smart reference object is destroyed it will automatically unregister itself.
-            // - If any smart reference objects exists the object will be asked if it is okay to proceed with
-            //   deletion.
-            // - If it answers yes the object shall be destroyed and references invalidated.
-            // - Unchecked access to an invalidated reference shall throw an exception which the stage will catch and
-            //   the then immediately terminate the invalid object and any smart references to it.
-            // This is the first and yet unimplemented draft of the approach.
-            for (auto const& object : objects) object->update(io, input, sound, *this);
+            if (tick == 0) sound.play(
+                sound::Wave::from(io.read_oggfile("res/snes_staff_roll.ogg"))
+                    | sound::trim_back(sound::duration<>::seconds(2) - sound::duration<>::milliseconds(500))
+                    | sound::loop(sound::duration<>::seconds(9))
+            );
+
+            if (tick >= START_TICK) {
+                for (auto const& object : objects) object->update(io, input, sound, *this);
+            }
 
             apply_removal_queue();
 
@@ -453,6 +450,22 @@ namespace bubble {
         // Inelegant but serviceable indirection to constrain the NES viewport without rewriting the code.
         void draw_viewport(Io& io, rt::Input const& input, Ref<Image> target) const {
             target | draw::clear(draw::color::BLACK);
+
+            if (tick < START_TICK) {
+                auto intro = draw::MultilineText(
+                    "Now it is the beginning of\n"
+                    "a fantastic story! Let us\n"
+                    "make a journey to\n"
+                    "the cave of monsters!\n\n"
+                    "Good luck!",
+                    font::pod(),
+                    draw::VAlignment::Center
+                );
+
+                target | draw::draw(intro, draw::Origin::Center);
+
+                return;
+            }
 
             // Render the game objects.
             // Objects more than a screen away from the edge are not drawn.
@@ -581,6 +594,76 @@ namespace bubble {
                     }
                 }
             }
+
+            if (not editor_mode) { // HUD.
+                // Fit the HUD area and pad edges.
+                auto hud_target = (target | draw::as_slice())
+                    .resize_bottom(-(HEIGHT - 4) * 8)
+                    .resize(-4);
+
+                auto total_seconds = (tick - START_TICK) / 60;
+                auto minutes = total_seconds / 60;
+                auto seconds = total_seconds % 60;
+
+                hud_target
+                    | draw::draw(
+                        draw::VStack(3,
+                            draw::Text(std::format("STAGE {:02}", stage_index), font::pico()),
+                            draw::Text(std::format("{:02}:{:02}", minutes, seconds), font::mine())
+                        ) | draw::resize_bottom(-1),
+                        draw::Origin::Bottom
+                    );
+
+                hud_target
+                    | draw::draw(
+                        draw::VStack(draw::VAlignment::Left, 2,
+                            draw::Text("Bub", font::pico())
+                                | draw::resize_left(2),
+                            draw::HStack(draw::HAlignment::Bottom, 3,
+                                sheet.tile_ref(0, 6).resize_bottom(-4),
+                                draw::Text(std::format("x {}", bub_lives), font::pico()),
+                                draw::HSpacer(3),
+                                draw::Text(std::format("{:02}", bub_score), font::mine())
+                                    | draw::resize_bottom(-1)
+                            )
+                        ),
+                        draw::Origin::BottomLeft
+                    );
+
+                if (mode == GameMode::OnePlayer) {
+                    auto hud_observer_target = (target | draw::as_slice())
+                        .resize_bottom(-(HEIGHT - 4) * 8)
+                        .resize_horizontal(-4);
+                    hud_observer_target
+                        | draw::draw(
+                            sheet.tile_ref(tick / 30 % 2 == 0 ? 0 : 1, 0)
+                                | draw::map([] (Color c) -> Color {
+                                    if (c == Color::rgba(92, 230, 52)) return Color::rgba(76, 206, 220);
+                                    if (c == Color::rgba(252, 130, 116)) return Color::rgba(196, 118, 252);
+                                    return c;
+                                }),
+                            draw::Origin::BottomRight
+                        );
+                }
+
+                if (mode == GameMode::TwoPlayer) {
+                    hud_target
+                        | draw::draw(
+                            draw::VStack(draw::VAlignment::Right, 2,
+                                draw::Text("Bob", font::pico())
+                                    | draw::resize_right(2),
+                                draw::HStack(draw::HAlignment::Bottom, 3,
+                                    draw::Text(std::format("{:02}", bob_score), font::mine())
+                                        | draw::resize_bottom(-1),
+                                    draw::HSpacer(3),
+                                    draw::Text(std::format("{} x", bob_lives), font::pico()),
+                                    sheet.tile_ref(1, 6).resize_bottom(-4)
+                                )
+                            ),
+                            draw::Origin::BottomRight
+                        );
+                }
+            }
         }
 
         /// Loads a stage from a little endian file.
@@ -595,8 +678,8 @@ namespace bubble {
         /// - x (i32)
         /// - y (i32)
         /// - userdata (128 u8)
-        static auto load(Io& io, u8 index, Grid<Image> sheet, bool start_as_editor = false) -> Box<Stage> {
-            auto ret = Box<Stage>::make(io, index, std::move(sheet), start_as_editor);
+        static auto load(Io& io, u8 index, Grid<Image> sheet, GameMode mode, bool start_as_editor = false) -> Box<Stage> {
+            auto ret = Box<Stage>::make(io, index, std::move(sheet), mode, start_as_editor);
             ret->reload(io);
             return ret;
         }

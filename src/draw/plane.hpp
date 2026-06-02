@@ -474,8 +474,8 @@ namespace draw {
         i32 x, y, w, h;
 
       public:
-        constexpr explicit Slice(T inner, i32 x, i32 y, i32 width, i32 height) noexcept
-            : inner(inner), x(x), y(y), w(width), h(height) {}
+        template <typename U> constexpr explicit Slice(U&& inner, i32 x, i32 y, i32 width, i32 height) noexcept
+            : inner(std::forward<U>(inner)), x(x), y(y), w(width), h(height) {}
 
         constexpr auto get(i32 x, i32 y) const noexcept(noexcept(inner.get(this->x + x, this->y + y))) -> Color {
             return inner.get(this->x + x, this->y + y);
@@ -493,41 +493,67 @@ namespace draw {
             return h;
         }
 
-        constexpr auto resize_left(i32 offset) const noexcept -> Slice {
+        constexpr auto resize_left(i32 offset) const& noexcept -> Slice {
             return Slice { inner, x - offset, y, std::max(0, w + offset), h };
         }
+        constexpr auto resize_left(i32 offset) && noexcept -> Slice {
+            return Slice { std::forward<T>(inner), x - offset, y, std::max(0, w + offset), h };
+        }
 
-        constexpr auto resize_right(i32 offset) const noexcept -> Slice {
+        constexpr auto resize_right(i32 offset) const& noexcept -> Slice {
             return Slice { inner, x, y, std::max(0, w + offset), h };
         }
+        constexpr auto resize_right(i32 offset) && noexcept -> Slice {
+            return Slice { std::forward<T>(inner), x, y, std::max(0, w + offset), h };
+        }
 
-        constexpr auto resize_top(i32 offset) const noexcept -> Slice {
+        constexpr auto resize_top(i32 offset) const& noexcept -> Slice {
             return Slice { inner, x, y - offset, w, std::max(0, h + offset) };
         }
+        constexpr auto resize_top(i32 offset) && noexcept -> Slice {
+            return Slice { std::forward<T>(inner), x, y - offset, w, std::max(0, h + offset) };
+        }
 
-        constexpr auto resize_bottom(i32 offset) const noexcept -> Slice {
+        constexpr auto resize_bottom(i32 offset) const& noexcept -> Slice {
             return Slice { inner, x, y, w, std::max(0, h + offset) };
         }
+        constexpr auto resize_bottom(i32 offset) && noexcept -> Slice {
+            return Slice { std::forward<T>(inner), x, y, w, std::max(0, h + offset) };
+        }
 
-        constexpr auto resize_horizontal(i32 offset) const noexcept -> Slice {
+        constexpr auto resize_horizontal(i32 offset) const& noexcept -> Slice {
             return Slice { inner, x - offset, y, std::max(0, w + offset * 2), h };
         }
+        constexpr auto resize_horizontal(i32 offset) && noexcept -> Slice {
+            return Slice { std::forward<T>(inner), x - offset, y, std::max(0, w + offset * 2), h };
+        }
 
-        constexpr auto resize_vertical(i32 offset) const noexcept -> Slice {
+        constexpr auto resize_vertical(i32 offset) const& noexcept -> Slice {
             return Slice { inner, x, y - offset, w, std::max(0, h + offset * 2) };
         }
+        constexpr auto resize_vertical(i32 offset) && noexcept -> Slice {
+            return Slice { std::forward<T>(inner), x, y - offset, w, std::max(0, h + offset * 2) };
+        }
 
-        constexpr auto resize(i32 offset) const noexcept -> Slice {
+        constexpr auto resize(i32 offset) const& noexcept -> Slice {
             return resize_horizontal(offset).resize_vertical(offset);
         }
-
-        constexpr auto shift(i32 off_x, i32 off_y) const noexcept -> Slice {
-            return Slice { inner, x + off_x, y + off_y, w, h };
+        constexpr auto resize(i32 offset) && noexcept -> Slice {
+            return std::move(*this).resize_horizontal(offset).resize_vertical(offset);
         }
 
-        /// Convert to a slice which discards out of bounds access instead of forwarding it.
-        constexpr auto discard() const noexcept -> DiscardSlice<T> {
-            return DiscardSlice { inner, x, y, w, h };
+        constexpr auto shift(i32 off_x, i32 off_y) const& noexcept -> Slice {
+            return Slice { inner, x + off_x, y + off_y, w, h };
+        }
+        constexpr auto shift(i32 off_x, i32 off_y) && noexcept -> Slice {
+            return Slice { std::forward<T>(inner), x + off_x, y + off_y, w, h };
+        }
+
+        constexpr auto discard() const& noexcept -> DiscardSlice<T> {
+            return DiscardSlice<T> { inner, x, y, w, h };
+        }
+        constexpr auto discard() && noexcept -> DiscardSlice<T> {
+            return DiscardSlice<T> { std::forward<T>(inner), x, y, w, h };
         }
     };
 
@@ -536,8 +562,8 @@ namespace draw {
         i32 tile_width, tile_height;
 
       public:
-        constexpr explicit Grid(T inner, i32 tile_width, i32 tile_height) noexcept
-            : inner(std::move(inner)), tile_width(tile_width), tile_height(tile_height) {}
+        template <typename U> constexpr explicit Grid(U&& inner, i32 tile_width, i32 tile_height) noexcept
+            : inner(std::forward<U>(inner)), tile_width(tile_width), tile_height(tile_height) {}
 
         constexpr auto tile(i32 x, i32 y) const noexcept -> Slice<T> {
             return Slice(inner, x * tile_width, y * tile_height, tile_width, tile_height);
@@ -560,12 +586,46 @@ namespace draw {
         }
     };
 
+    template <Plane T> DiscardSlice(T&&, i32, i32, i32, i32) -> DiscardSlice<std::decay<T>>;
+    template <Plane T> Slice(T&&, i32, i32, i32, i32) -> Slice<std::decay_t<T>>;
+    template <Plane T> Grid(T&&, i32, i32) -> Grid<std::decay_t<T>>;
+
+    /// Shifts the coordinate space of a plane without altering the size.
+    template <Plane T> class OffsetPlane final {
+        T inner;
+        i32 ox, oy;
+
+        public:
+        template <typename U> constexpr explicit OffsetPlane(U&& inner, i32 x, i32 y) noexcept
+            : inner(std::forward<U>(inner)), ox(x), oy(y) {}
+
+        constexpr auto width() const noexcept(noexcept(inner.width())) -> i32 requires SizedPlane<T> {
+            return inner.width();
+        }
+
+        constexpr auto height() const noexcept(noexcept(inner.height())) -> i32 requires SizedPlane<T> {
+            return inner.height();
+        }
+
+        constexpr auto get(i32 x, i32 y) const noexcept(noexcept(inner.get(x - ox, y - oy))) -> Color {
+            return inner.get(x - ox, y - oy);
+        }
+
+        constexpr void set(i32 x, i32 y, Color color) noexcept(noexcept(inner.set(x - ox, y - oy, color)))
+            requires MutablePlane<T>
+        {
+            inner.set(x - ox, y - oy, color);
+        }
+    };
+
+    template <Plane T> OffsetPlane(T&&, i32, i32) -> OffsetPlane<T>;
+
     namespace adapt {
         struct Slice final {
             i32 x, y, width, height;
 
-            template <Plane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(inner, x, y, width, height);
+            template <Plane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<std::decay_t<T>> {
+                return draw::Slice<std::decay_t<T>>(std::forward<T>(inner), x, y, width, height);
             }
         };
 
@@ -582,6 +642,14 @@ namespace draw {
 
             template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
                 return draw::Slice<T>(inner, x, y, inner.width(), inner.height());
+            }
+        };
+
+        struct Offset final {
+            i32 x, y;
+
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<std::decay_t<T>> {
+                return draw::Slice<std::decay_t<T>>(std::forward<T>(inner), x, y, inner.width(), inner.height());
             }
         };
 
@@ -639,56 +707,56 @@ namespace draw {
         struct ResizeLeft final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_left(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_left(offset);
             }
         };
 
         struct ResizeRight final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_right(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_right(offset);
             }
         };
 
         struct ResizeTop final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_top(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_top(offset);
             }
         };
 
         struct ResizeBottom final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_bottom(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_bottom(offset);
             }
         };
 
         struct ResizeHorizontal final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_horizontal(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_horizontal(offset);
             }
         };
 
         struct ResizeVertical final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height()).resize_vertical(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_vertical(offset);
             }
         };
 
         struct Resize final {
             i32 horizontal, vertical;
 
-            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(inner, 0, 0, inner.width(), inner.height())
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
+                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height())
                     .resize_horizontal(horizontal)
                     .resize_vertical(vertical);
             }
@@ -708,6 +776,11 @@ namespace draw {
     /// Similar to the slice shift but wraps the type in a slice first.
     constexpr adapt::Shift shift(i32 x, i32 y) noexcept {
         return adapt::Shift { x, y };
+    }
+
+    /// Shifts the coordinate space of a plane without altering the size.
+    constexpr adapt::Offset offset(i32 x, i32 y) noexcept {
+        return adapt::Offset { x, y };
     }
 
     /// Wraps a sized drawable in a slice of matching proportions.
@@ -833,8 +906,8 @@ namespace draw {
         template <typename F> struct Map final {
             F fn;
 
-            template <Plane T> constexpr auto operator()(T inner) const noexcept -> draw::Map<T, F> {
-                return draw::Map<T, F> { inner, fn };
+            template <Plane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Map<std::decay_t<T>, F> {
+                return draw::Map<std::decay_t<T>, F> { std::forward<T>(inner), fn };
             }
         };
 
@@ -1016,10 +1089,14 @@ namespace draw {
         };
 
       public:
-        constexpr EitherPlane(Left value) noexcept : tag(Case::L), left(value) {}
-        constexpr EitherPlane(Right value) noexcept : tag(Case::R), right(value) {}
+          template <typename U> constexpr EitherPlane(U&& value) noexcept requires std::same_as<Left, std::decay_t<U>>
+            : tag(Case::L), left(std::forward<U>(value)) {}
+          template <typename U> constexpr EitherPlane(U&& value) noexcept requires std::same_as<Right, std::decay_t<U>>
+            : tag(Case::R), right(std::forward<U>(value)) {}
 
-        ~EitherPlane() noexcept {
+        ~EitherPlane() noexcept
+            requires (not std::is_trivially_destructible_v<Left> and not std::is_trivially_destructible_v<Right>)
+        {
             if (is_alive) {
                 switch (tag) {
                     case Case::L: left.~Left(); break;
@@ -1028,6 +1105,8 @@ namespace draw {
                 is_alive = false;
             }
         }
+
+        ~EitherPlane() = default;
 
         constexpr auto width() const noexcept(noexcept(left.width()) and noexcept(right.width())) -> i32
         requires
@@ -1053,6 +1132,16 @@ namespace draw {
             switch (tag) {
                 case Case::L: return left.get(x, y);
                 case Case::R: return right.get(x, y);
+            }
+        }
+
+        constexpr auto set(i32 x, i32 y, Color color) const
+            noexcept(noexcept(left.set(x, y, color)) and noexcept(right.set(x, y, color))) -> Color
+            requires MutablePlane<Left> and MutablePlane<Right>
+        {
+            switch (tag) {
+                case Case::L: return left.set(x, y, color);
+                case Case::R: return right.set(x, y, color);
             }
         }
     };

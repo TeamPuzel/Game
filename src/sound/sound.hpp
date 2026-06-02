@@ -50,8 +50,8 @@ namespace sound {
         usize offset, c;
 
       public:
-        constexpr explicit Slice(T inner, usize offset, usize count) noexcept
-            : inner(inner), offset(offset), c(count) {}
+        template <typename U> constexpr explicit Slice(U&& inner, usize offset, usize count) noexcept
+            : inner(std::forward<U>(inner)), offset(offset), c(count) {}
 
         constexpr auto get(usize index) const noexcept(noexcept(inner.get(index))) -> f32 {
             return inner.get(index + offset);
@@ -77,6 +77,8 @@ namespace sound {
             return Slice { inner, this->offset + offset, c };
         }
     };
+
+    template <typename T> Slice(T&&, usize, usize) -> Slice<T>;
 
     template <Sound T> struct Ref final {
         T& inner;
@@ -112,6 +114,39 @@ namespace sound {
         }
     };
 
+    template <SizedSound T> struct LoopFrom final {
+        T inner;
+        usize start;
+
+        constexpr auto get(usize index)
+            const noexcept(noexcept(inner.get(index)) and noexcept(inner.count())) -> f32
+        {
+            const usize c = inner.count();
+
+            // Pre-loop playback.
+            if (index < c) return inner.get(index);
+            // If start is out of bounds, output silence to prevent division by zero.
+            if (c <= start) return .0f;
+
+            // Loop playback.
+            const usize loop_length = c - start;
+            return inner.get(start + ((index - c) % loop_length));
+        }
+
+        constexpr void set(usize index, f32 value)
+            noexcept(noexcept(inner.set(index, value)) and noexcept(inner.count())) requires MutableSound<T>
+        {
+            const usize c = inner.count();
+
+            // Pre-loop playback.
+            if (index < c) return inner.get(index);
+
+            // Loop playback.
+            const usize loop_length = c - start;
+            return inner.set(start + ((index - c) % loop_length), value);
+        }
+    };
+
     template <Sound T> struct Volume final {
         T inner;
         f32 volume;
@@ -133,8 +168,8 @@ namespace sound {
         struct Slice final {
             usize offset, count;
 
-            template <Sound T> constexpr auto operator()(T inner) const noexcept -> sound::Slice<T> {
-                return sound::Slice<T>(inner, offset, count);
+            template <Sound T> constexpr auto operator()(T&& inner) const noexcept -> sound::Slice<std::decay_t<T>> {
+                return sound::Slice<std::decay_t<T>>(std::forward<T>(inner), offset, count);
             }
         };
 
@@ -205,14 +240,43 @@ namespace sound {
         };
 
         struct Loop final {
-            template <Sound T> constexpr auto operator()(T&& inner) const noexcept -> sound::Loop<T> {
-                return sound::Loop<T>(std::forward<T>(inner));
+            template <Sound T> constexpr auto operator()(T&& inner) const noexcept -> sound::Loop<std::decay_t<T>> {
+                return sound::Loop<std::decay_t<T>>(std::forward<T>(inner));
+            }
+        };
+
+        struct LoopFrom final {
+            usize start;
+
+            template <Sound T> constexpr auto operator()(T&& inner) const noexcept -> sound::LoopFrom<std::decay_t<T>> {
+                return sound::LoopFrom<std::decay_t<T>>(std::forward<T>(inner), start);
+            }
+        };
+
+        struct Trim final {
+            usize front;
+            usize back;
+
+            template <Sound T> constexpr auto operator()(T&& inner) const noexcept -> sound::Slice<std::decay_t<T>> {
+                return sound::Slice<std::decay_t<T>>(std::forward<T>(inner), front, inner.count() - front - back);
             }
         };
     }
 
     constexpr adapt::Slice slice(usize offset, usize count) noexcept {
         return adapt::Slice { offset, count };
+    }
+
+    constexpr adapt::Trim trim_front(usize count) noexcept {
+        return adapt::Trim { count, 0 };
+    }
+
+    constexpr adapt::Trim trim_back(usize count) noexcept {
+        return adapt::Trim { 0, count };
+    }
+
+    constexpr adapt::Trim trim(usize count) noexcept {
+        return adapt::Trim { count / 2, count / 2 };
     }
 
     constexpr adapt::Shift shift(usize offset) noexcept {
@@ -245,6 +309,10 @@ namespace sound {
 
     constexpr adapt::Loop loop() noexcept {
         return adapt::Loop {};
+    }
+
+    constexpr adapt::LoopFrom loop(usize start) noexcept {
+        return adapt::LoopFrom { start };
     }
 }
 
@@ -434,10 +502,23 @@ namespace sound {
 
     static_assert(SizedMutableSound<Wave>);
 
+    template <const usize FREQUENCY = 48000> struct duration final {
+        static auto seconds(usize s) -> usize {
+            return s * FREQUENCY;
+        }
+
+        static auto milliseconds(usize s) -> usize {
+            return s * FREQUENCY / 1000;
+        }
+    };
+
     class SoundStage final {
       public:
         using Id = usize;
         using Timestamp = u64;
+
+        static constexpr auto FREQUENCY = 48000;
+        using duration = sound::duration<FREQUENCY>;
 
         struct ActiveSound final {
             Box<any::Sound> exist;
@@ -459,7 +540,7 @@ namespace sound {
       private:
         Wave buffer = Wave(4800);
         std::unordered_map<Id, ActiveSound> sounds;
-        Id next_id = 0;
+        Id next_id = 1;
         Timestamp time_point = 0;
 
         void evaluate() {

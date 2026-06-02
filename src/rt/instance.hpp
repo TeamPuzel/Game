@@ -113,12 +113,6 @@ class SdlIo final : public Io {
     auto perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> override;
 };
 
-namespace rt::exec {
-    class Executor final {
-
-    };
-}
-
 namespace rt {
     using sound::SoundStage;
 
@@ -691,6 +685,10 @@ namespace rt {
         return HeuristicTimestampBasedRefreshRateLock {};
     }
 
+    class Executor final {
+
+    };
+
     /// Defines a game runnable by a game executor. The default is `run(game)`.
     ///
     /// This does not use virtual dispatch because that would require the draw method
@@ -707,6 +705,7 @@ namespace rt {
         draw::Ref<draw::Image> target, Io& io, Input const& input, SoundStage& sound
     ) {
         { self_mut.init(io) } -> std::same_as<void>;
+        { self_mut.deinit(io) } -> std::same_as<void>;
         { self_mut.update(io, input, sound) } -> std::same_as<void>;
         { self.draw(io, input, target) } -> std::same_as<void>;
     };
@@ -733,8 +732,11 @@ namespace rt {
     /// This method was moved from Game into an environment message.
     /// A game cannot run itself, it is run by the platform it's on
     /// and can be run in many ways, this is just one implementation.
-    static void run(Instance auto& game, char const* title, i32 width, i32 height, i32 scale) {
+    static void run(Instance auto game, char const* title, i32 width, i32 height, i32 scale) {
         static std::atomic<bool> is_running = false;
+
+        SdlIo io;
+        Io::unsafe_push_threadlocal_io(&io);
 
         if (is_running.load()) {
             throw RunError { RunError::Reason::AlreadyRunning };
@@ -818,9 +820,6 @@ namespace rt {
         auto audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, nullptr, nullptr);
         if (audio_stream) SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(audio_stream));
 
-        SdlIo io;
-        Io::unsafe_push_threadlocal_io(&io);
-
         SoundStage sound_stage;
 
         // Set up the proper, esoteric RAII cleanup in case of uncaught exceptions.
@@ -863,7 +862,9 @@ namespace rt {
         while (true) {
             while (SDL_PollEvent(&event)) {
                 switch (event.type) {
-                    case SDL_EVENT_QUIT: goto end;
+                    case SDL_EVENT_QUIT:
+                        game.deinit(io);
+                        goto end;
                     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: apply_window_size(); break;
                     default: break;
                 }

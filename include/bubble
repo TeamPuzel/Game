@@ -7,4 +7,5 @@
 #include "../src/bubble/scene.hpp"
 #include "../src/bubble/stage.hpp"
 #include "../src/bubble/title.hpp"
-#include "../src/bubble/venue.hpp"
+#include "../src/bubble/scoreboard.hpp"
+#include "../src/bubble/controls.hpp"

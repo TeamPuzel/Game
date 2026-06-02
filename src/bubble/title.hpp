@@ -1,18 +1,21 @@
 #pragma once
 #include "scene.hpp"
 #include "stage.hpp"
-#include "venue.hpp"
+#include "scoreboard.hpp"
+#include "controls.hpp"
 
 namespace bubble {
-    class Title : public Scene {
+    class Title final : public Scene {
         u32 tick = 0;
         Grid<Image> sheet;
         i32 menu_selection = 0;
 
-      public:
-        friend class Box<Editor>; // What.
+        static constexpr i32 MENU_SELECTION_END = 4;
 
-        Title(Io& io) : sheet(
+      public:
+        Title(Io& io, Grid<Image> sheet) : sheet(std::move(sheet)) {}
+
+        Title(Io& io) : Title(io,
             draw::TgaImage::from(io.read_file("res/tiles.tga"))
                 | draw::flatten<Image>()
                 | draw::grid(16, 16)
@@ -20,14 +23,16 @@ namespace bubble {
 
         void start(Io& io) {
             switch (menu_selection) {
-                case 0: transition(Venue::of(io, Mode::OnePlayer,       std::move(sheet))); break;
-                case 1: transition(Venue::of(io, Mode::TwoPlayer,       std::move(sheet))); break;
-                case 2: transition(Venue::of(io, Mode::TwoPlayerVersus, std::move(sheet))); break;
+                case 0: transition(Stage::load(io, 1, std::move(sheet), GameMode::OnePlayer));       break;
+                case 1: transition(Stage::load(io, 1, std::move(sheet), GameMode::TwoPlayer));       break;
+                case 2: transition(Stage::load(io, 1, std::move(sheet), GameMode::TwoPlayerVersus)); break;
+                case 3: transition(Box<ScoreBoard>::make(io, std::move(sheet))); break;
+                case 4: transition(Box<Controls>::make(io, std::move(sheet)));   break;
             }
         }
 
         void start_editor(Io& io) {
-            transition(Stage::load(io, 1, std::move(sheet), true));
+            transition(Stage::load(io, 1, std::move(sheet), GameMode::OnePlayer, true));
         }
 
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
@@ -41,11 +46,11 @@ namespace bubble {
                 );
             }
 
-            if (input.gamepad_pressed(Button::Up) or input.key_pressed(Key::Up)) {
-                menu_selection = std::clamp(menu_selection - 1, 0, 2);
+            if (input.gamepad_pressed(Button::Up) or input.key_repeating(Key::Up)) {
+                menu_selection = std::clamp(menu_selection - 1, 0, MENU_SELECTION_END);
             }
-            if (input.gamepad_pressed(Button::Down) or input.key_pressed(Key::Down)) {
-                menu_selection = std::clamp(menu_selection + 1, 0, 2);
+            if (input.gamepad_pressed(Button::Down) or input.key_repeating(Key::Down)) {
+                menu_selection = std::clamp(menu_selection + 1, 0, MENU_SELECTION_END);
             }
 
             if (input.gamepad_pressed(Button::A) or input.key_pressed(Key::Enter)) {
@@ -77,15 +82,23 @@ namespace bubble {
                     : draw::color::pico::WHITE;
             };
 
-            auto title_screen = draw::VStack(draw::VAlignment::Center, 4,
+            auto title_screen = draw::VStack(draw::VAlignment::Center, 1,
                 title_card,
-                draw::Text("1 Player", font::pod(), menu_item_color(0)),
-                draw::Text("2 Player", font::pod(), menu_item_color(1)),
-                draw::Text("2 Player Versus", font::pod(), menu_item_color(2))
+                draw::VStack(draw::VAlignment::Center, 4,
+                    draw::Text("1 Player", font::mine(), menu_item_color(0)),
+                    draw::Text("2 Player", font::mine(), menu_item_color(1)),
+                    draw::Text("2 Player Versus", font::mine(), menu_item_color(2)),
+                    draw::Text("Scoreboard", font::mine(), menu_item_color(3)),
+                    draw::Text("Controls", font::mine(), menu_item_color(4))
+                )
             );
 
             target
                 | draw::clear()
+                | draw::draw(
+                    draw::FilledRectangle(target.width(), target.height(), Color::gray(15))
+                        | draw::dither()
+                )
                 | draw::draw(title_screen, draw::Origin::Center);
         }
     };

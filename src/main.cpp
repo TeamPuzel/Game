@@ -5,6 +5,7 @@
 #include <bubble>
 
 static std::atomic<bool> RELOAD_REQUESTED = false;
+static std::atomic<bool> DID_PRELOAD = false;
 
 #if defined(__APPLE__) || defined(__linux__)
 #include <signal.h>
@@ -21,26 +22,29 @@ class Game final {
 
     void init(Io& io) {
         bubble::Scene::unsafe_set_root_ptr(&scene);
-
-        // scene = bubble::Stage::load(io, "1.stage");
         scene = Box<bubble::Title>::make(io);
+        // scene = Box<bubble::ScoreBoard>::make(io, std::queue<bubble::ScoreBoard::PendingScore>({
+        //     { .character = bubble::ScoreBoard::Character::Bub, .score = 1000 }
+        // }));
+    }
+
+    void deinit(Io& io) {
+        scene.erase();
+        bubble::class_loader::clear();
     }
 
     void update(Io& io, rt::Input const& input, rt::SoundStage& sound) {
         bubble::Scene::unsafe_apply_transition();
 
+        if (not DID_PRELOAD) {
+            bubble::Stage::preload_object_classes(io);
+            DID_PRELOAD = true;
+        }
+
         if (RELOAD_REQUESTED) {
             scene->hot_reload(io);
             RELOAD_REQUESTED = false;
         }
-
-        // if (input.key_pressed(rt::Key::Tab)) {
-        //     if (dynamic_cast<bubble::Stage*>(scene.raw())) {
-        //         scene = bubble::Editor::of(scene.cast<bubble::Stage>());
-        //     } else if (auto editor = dynamic_cast<bubble::Editor*>(scene.raw())) {
-        //         scene = editor->finalize();
-        //     }
-        // }
 
         scene->update(io, input, sound);
     }
@@ -58,7 +62,7 @@ auto main() -> i32 {
     sa.sa_flags = SA_RESTART; // restart syscalls after signal
     sigaction(SIGUSR1, &sa, NULL);
 #endif
-    Game instance; rt::run(instance, "Bubble Bobble DX",
+    rt::run(Game(), "Bubble Bobble DX",
         32 * 8 * 2, // NES tiles to window size.
         30 * 8 * 2,
         2
