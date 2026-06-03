@@ -14,7 +14,13 @@ namespace bubble {
         static constexpr i32 MENU_SELECTION_END = 4;
 
       public:
-        Title(Io& io, Grid<Image> sheet) : sheet(std::move(sheet)) {
+        Title(Io& io, Grid<Image> sheet, Box<SoundLibrary> sounds) : sheet(std::move(sheet)), sounds(std::move(sounds)) {}
+
+        Title(Io& io) : sheet(
+            draw::TgaImage::from(io.read_file("res/tiles.tga"))
+                | draw::flatten<Image>()
+                | draw::grid(16, 16)
+        ) {
             sounds = Box<SoundLibrary>::make();
             using enum SoundLibrary::SoundRequest::Type;
 
@@ -26,12 +32,6 @@ namespace bubble {
 
             sounds->fetch(io);
         }
-
-        Title(Io& io) : Title(io,
-            draw::TgaImage::from(io.read_file("res/tiles.tga"))
-                | draw::flatten<Image>()
-                | draw::grid(16, 16)
-        ) {}
 
         void start(Io& io) {
             switch (menu_selection) {
