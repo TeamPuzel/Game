@@ -35,6 +35,9 @@ build: setup
 run: build
 	@cd build; ./bubble
 
+profile: build
+	@cd build; xcrun xctrace record --template 'Game' --launch -- ./bubble
+
 # A simple command for recompiling parts of the game while it's running.
 # Because most of the runtime is just headers this inherently includes hot reloading those parts of the runtime.
 reload:

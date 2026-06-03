@@ -21,7 +21,7 @@ if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wno-deprecated-declarations")
     add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
 else()
-    # AI generated MSVC roughly flag equivalent nonsense:
+    # MSVC flag equivalent nonsense.
 
     # /W4 is the practical equivalent of -Wall. (MSVC's actual /Wall is extremely noisy).
     # /Zi generates debugging information (like -g). (UPDATE: needs Z7 or the dumb thing will race condition and die).
@@ -45,8 +45,7 @@ else()
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_BINARY_DIR}")
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_CURRENT_BINARY_DIR}")
 
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Xlinker /ENTRY:mainCRTStartup")
-    add_compile_definitions(SDL_MAIN_HANDLED)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ENTRY:mainCRTStartup")
 endif()
 
 # Depencencies ---------------------------------------------------------------------------------------------------------

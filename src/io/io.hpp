@@ -68,6 +68,8 @@ class Io {
     virtual auto perform_load_symbol(void* library, char const* name) -> void* = 0;
     virtual auto perform_read_wavefile(char const* path, u32 frequency) -> std::vector<f32> = 0;
     virtual auto perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> = 0;
+    virtual auto perform_get_environment(char const* name) -> std::optional<std::string> = 0;
+    virtual void perform_set_environment(char const* name, std::optional<std::string_view> value) = 0;
 
   public:
     Io(Io const&) = delete;
@@ -136,6 +138,14 @@ class Io {
 
     auto read_oggfile(std::string_view path, u32 frequency = 48000) -> std::vector<f32> {
         return perform_read_oggfile(path.data(), frequency);
+    }
+
+    auto get_environment(std::string_view name) -> std::optional<std::string> {
+        return perform_get_environment(name.begin());
+    }
+
+    void set_environment(std::string_view name, std::optional<std::string_view> value) {
+        perform_set_environment(name.begin(), value);
     }
 
   private:

@@ -383,11 +383,7 @@ namespace bubble {
                 draw_viewport(io, input, nes_target | draw::as_ref());
             });
 
-            // As inefficient as this entire process is (we kind of have to do this if we want virtual dispatch later)
-            // the alternative is dispatch on individual pixels which is probably worse.
-            //
-            // Obligatory threading.
-            target | draw::draw_threaded(
+            target | draw::draw(
                 nes_target | draw::as_ref(),
                 viewport_offset_x,
                 viewport_offset_y

@@ -24,7 +24,7 @@ namespace bubble {
             sounds = Box<SoundLibrary>::make();
             using enum SoundLibrary::SoundRequest::Type;
 
-            // The async loader is FIFO so these should be in the order they're likely needed.
+            // The async loader is FIFO so these should be in the order they're likely first needed.
             sounds->enqueue("title",    "res/snes_bubble_bustin.ogg", Ogg);
             sounds->enqueue("gameplay", "res/snes_staff_roll.ogg",    Ogg);
             sounds->enqueue("score",    "res/snes_champion.ogg",      Ogg);

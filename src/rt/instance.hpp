@@ -132,6 +132,19 @@ class SdlIo final : public Io {
     // I do not wish to bother with fixing static linkage or adding another massive library just to use one function.
     auto perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> override;
 
+    auto perform_get_environment(char const* name) -> std::optional<std::string> override {
+        auto result = SDL_GetEnvironmentVariable(SDL_GetEnvironment(), name);
+        if (result) return std::string(result); else return std::nullopt;
+    }
+
+    void perform_set_environment(char const* name, std::optional<std::string_view> value) override {
+        if (value) {
+            SDL_SetEnvironmentVariable(SDL_GetEnvironment(), name, value->begin(), true);
+        } else {
+            SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), name);
+        }
+    }
+
   public:
     auto async() -> Async& override {
         return async_io;

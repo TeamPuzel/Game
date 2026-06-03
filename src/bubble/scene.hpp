@@ -76,7 +76,7 @@ namespace bubble {
                 std::lock_guard lock(sound_storage_mutex);
                 sound_storage.insert({ name, std::move(sound) });
 
-                cv.notify_all(); // New sound.
+                cv.notify_all(); // We have a new sound someone might be waiting for.
             }
         }
 
