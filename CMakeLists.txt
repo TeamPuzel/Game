@@ -21,7 +21,7 @@ if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wno-deprecated-declarations")
     add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
 else()
-    # AI generated MSVC flag equivalent nonsense:
+    # AI generated MSVC roughly flag equivalent nonsense:
 
     # /W4 is the practical equivalent of -Wall. (MSVC's actual /Wall is extremely noisy).
     # /Zi generates debugging information (like -g). (UPDATE: needs Z7 or the dumb thing will race condition and die).
@@ -44,6 +44,9 @@ else()
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}")
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_BINARY_DIR}")
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_CURRENT_BINARY_DIR}")
+
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Xlinker /ENTRY:mainCRTStartup")
+    add_compile_definitions(SDL_MAIN_HANDLED)
 endif()
 
 # Depencencies ---------------------------------------------------------------------------------------------------------
@@ -74,7 +77,7 @@ file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.mm)
 file(GLOB_RECURSE GAME_OBJECT_SOURCES CONFIGURE_DEPENDS object/*.cpp)
 
 if(NOT HOT_RELOAD)
-    add_executable(bubble ${GAME_SOURCES})
+    add_executable(bubble WIN32 ${GAME_SOURCES})
     target_include_directories(bubble PRIVATE include lib/stb)
     target_link_libraries(bubble PRIVATE SDL3::SDL3)
 endif()
