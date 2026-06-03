@@ -33,7 +33,7 @@ class Io {
 
     class AsyncNotAvailableError final : public std::exception {
       public:
-        constexpr AsyncNotAvailableError() {}
+        AsyncNotAvailableError() {}
 
         AsyncNotAvailableError(AsyncNotAvailableError const&) = delete;
         AsyncNotAvailableError(AsyncNotAvailableError&&) = delete;
