@@ -5,23 +5,16 @@ namespace bubble {
     class Controls final : public Scene {
         u32 tick = 0;
         Grid<Image> sheet;
+        Box<SoundLibrary> sounds;
 
       public:
-        Controls(Io& io, Grid<Image> sheet) : sheet(std::move(sheet)) {}
-
-        Controls(Io& io) : Controls(io,
-            draw::TgaImage::from(io.read_file("res/tiles.tga"))
-                | draw::flatten<Image>()
-                | draw::grid(16, 16)
-        ) {}
+        Controls(Io& io, Grid<Image> sheet, Box<SoundLibrary> sounds)
+            : sheet(std::move(sheet)), sounds(std::move(sounds)) {}
 
         void return_to_title(Io& io);
 
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
-            if (tick == 0) sound.play(
-                sound::Wave::from(io.read_oggfile("res/snes_pro_player.ogg"))
-                    | sound::loop()
-            );
+            if (tick == 0) sound.play(sounds->get("controls").clone() | sound::loop());
 
             if (input.key_pressed(rt::Key::Enter) or input.gamepad_pressed(rt::Button::A)) {
                 sound.stop();

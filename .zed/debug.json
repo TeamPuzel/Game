@@ -11,7 +11,19 @@
             "cwd": "$ZED_WORKTREE_ROOT"
         },
         "cwd": "$ZED_WORKTREE_ROOT/build",
-        "program": "$ZED_WORKTREE_ROOT/build/sonic",
+        "program": "$ZED_WORKTREE_ROOT/build/bubble",
+        "request": "launch",
+        "adapter": "CodeLLDB"
+    },
+    {
+        "label": "Debug native debug binary",
+        "build": {
+            "command": "make build BUILD_TYPE=Debug",
+            "args": [],
+            "cwd": "$ZED_WORKTREE_ROOT"
+        },
+        "cwd": "$ZED_WORKTREE_ROOT/build",
+        "program": "$ZED_WORKTREE_ROOT/build/bubble",
         "request": "launch",
         "adapter": "CodeLLDB"
     }

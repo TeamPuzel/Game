@@ -10,11 +10,18 @@
 #include <sstream>
 #include <string>
 #include <optional>
+#include <variant>
 #include <atomic>
 #include <unordered_set>
 #include <iostream>
 #include <chrono>
 #include <numeric>
+#include <coroutine>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <stdexcept>
+#include <exception>
 #include <SDL3/SDL.h>
 
 /// An implemenation of Io purely in terms of SDL3. This is very convenient because we don't need
@@ -30,6 +37,19 @@ class SdlIo final : public Io {
             return reason.c_str();
         }
     };
+
+    class Async final : public Io::Async {
+        SDL_AsyncIOQueue* queue;
+
+        friend class SdlIo;
+
+        Async() : queue(SDL_CreateAsyncIOQueue()) {}
+        ~Async() { if (queue) SDL_DestroyAsyncIOQueue(queue); }
+    } async_io;
+
+    void poll_async() {
+        SDL_AsyncIOOutcome sdl_outcome; // TODO
+    }
 
   private:
     auto perform_read_file(char const* path) -> std::vector<u8> override {
@@ -111,6 +131,11 @@ class SdlIo final : public Io {
     // everything dead code elimination doesn't work on it, and it's generally used as a massive dynamic library anyway.
     // I do not wish to bother with fixing static linkage or adding another massive library just to use one function.
     auto perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> override;
+
+  public:
+    auto async() -> Async& override {
+        return async_io;
+    }
 };
 
 namespace rt {
@@ -453,6 +478,9 @@ namespace rt {
             if (mouse_state) {
                 mouse_state->x += x_offset;
                 mouse_state->y += y_offset;
+            }
+
+            if (last_mouse_state) {
                 last_mouse_state->x += x_offset;
                 last_mouse_state->y += y_offset;
             }
@@ -589,7 +617,11 @@ namespace rt {
         f64 previous_stamp { timestamp() };
         mutable f64 phase { 0.0 };
 
+        static constexpr auto ACC_SAMPLES = 128;
+
       public:
+          HeuristicTimestampBasedRefreshRateLock() {}
+
         enum CommonRate : u32 {
             Hz30  = 30,
             Hz60  = 60,
@@ -609,12 +641,14 @@ namespace rt {
             // SAFETY: Just an environment query.
             const f64 stamp = timestamp();
             const f64 elapsed = stamp - previous_stamp;
+            previous_stamp = stamp;
+
+            // Drop heavy frame spikes.
+            if (elapsed > 100.0) return;
 
             acc.insert(acc.begin(), elapsed);
 
-            previous_stamp = stamp;
-
-            if (acc.size() > 120) acc.pop_back();
+            if (acc.size() > ACC_SAMPLES) acc.pop_back();
 
             const f64 average = std::accumulate(acc.begin(), acc.end(), 0.0)
                 / (f64) acc.size();
@@ -626,7 +660,7 @@ namespace rt {
             estimated_millis = average;
             estimated_hertz = u32(1000.0 / average);
             for (const auto rate : common_rates) {
-                constexpr f64 ERROR = 0.5;
+                static constexpr f64 ERROR = 0.5;
                 const f64 closest = 1000.0 / (f64) (u32) rate;
                 if (std::abs(average - closest) <= ERROR) {
                     common_rate = rate; break;
@@ -685,9 +719,265 @@ namespace rt {
         return HeuristicTimestampBasedRefreshRateLock {};
     }
 
-    class Executor final {
+    namespace detail {
+        class MainExecutor final {
+            std::queue<std::coroutine_handle<>> queue;
+            std::mutex queue_mutex;
+            std::thread::id thread_id;
 
+            public:
+            MainExecutor() : thread_id(std::this_thread::get_id()) {}
+
+            void enqueue(std::coroutine_handle<> job) {
+                std::lock_guard lock(queue_mutex);
+                queue.push(job);
+            }
+
+            void drain() {
+                std::queue<std::coroutine_handle<>> jobs;
+                {
+                    std::lock_guard lock(queue_mutex);
+                    jobs.swap(queue);
+                }
+
+                while (not jobs.empty()) {
+                    auto job = jobs.front(); jobs.pop();
+                    if (job and not job.done()) job.resume();
+                }
+            }
+
+            bool is_main_thread() const {
+                return std::this_thread::get_id() == thread_id;
+            }
+        };
+
+        class BackgroundExecutor final {
+            std::queue<std::coroutine_handle<>> queue;
+            std::mutex queue_mutex;
+            std::condition_variable_any cv;
+            std::jthread worker;
+
+            public:
+            BackgroundExecutor() : worker([this](std::stop_token stoken) {
+                while (not stoken.stop_requested()) {
+                    std::queue<std::coroutine_handle<>> jobs;
+                    {
+                        std::unique_lock lock(queue_mutex);
+                        // Sleep until jobs arrive or the jthread is destroyed.
+                        cv.wait(lock, stoken, [this] { return not queue.empty(); });
+                        if (stoken.stop_requested()) return;
+                        jobs.swap(queue);
+                    }
+
+                    while (not jobs.empty()) {
+                        auto job = jobs.front(); jobs.pop();
+                        if (job and not job.done()) job.resume();
+                    }
+                }
+            }) {}
+
+            void enqueue(std::coroutine_handle<> job) {
+                {
+                    std::lock_guard lock(queue_mutex);
+                    queue.push(job);
+                }
+                cv.notify_one();
+            }
+        };
+
+        inline MainExecutor& main_executor() {
+            static MainExecutor instance;
+            return instance;
+        }
+
+        inline BackgroundExecutor& background_executor() {
+            static BackgroundExecutor instance;
+            return instance;
+        }
+
+        struct SwitchToMainThread {
+            // If we are already on the main thread, we can continue.
+            bool await_ready() const noexcept { return detail::main_executor().is_main_thread(); }
+            void await_suspend(std::coroutine_handle<> h) { detail::main_executor().enqueue(h); }
+            void await_resume() const noexcept {}
+        };
+
+        struct SwitchToBackgroundThread {
+            // If we are already off the main thread, we can continue.
+            bool await_ready() const noexcept { return not detail::main_executor().is_main_thread(); }
+            void await_suspend(std::coroutine_handle<> h) { detail::background_executor().enqueue(h); }
+            void await_resume() const noexcept {}
+        };
+    }
+
+    /// Suspends the coroutine and resumes it on the background jthread.
+    inline auto enqueue() -> detail::SwitchToBackgroundThread { return {}; }
+    /// Suspends the coroutine and resumes it on the main loop.
+    inline auto enqueue_main() -> detail::SwitchToMainThread { return {}; }
+
+    template <typename T> class Task {
+      public:
+        struct promise_type;
+        using handle_type = std::coroutine_handle<promise_type>;
+
+        struct promise_type {
+            std::coroutine_handle<> continuation;
+
+            // Storage for the yielded value or a caught exception
+            std::variant<std::monostate, T, std::exception_ptr> result;
+
+            Task get_return_object() {
+                return Task{handle_type::from_promise(*this)};
+            }
+
+            std::suspend_always initial_suspend() noexcept { return {}; }
+
+            struct FinalAwaiter {
+                bool await_ready() const noexcept { return false; }
+
+                std::coroutine_handle<> await_suspend(handle_type h) noexcept {
+                    if (auto cont = h.promise().continuation) {
+                        return cont;
+                    }
+                    return std::noop_coroutine();
+                }
+
+                void await_resume() noexcept {}
+            };
+
+            FinalAwaiter final_suspend() noexcept { return {}; }
+
+            // 1. Accept the returned value
+            template <typename U>
+            void return_value(U&& value) {
+                result.template emplace<T>(std::forward<U>(value));
+            }
+
+            // 2. Safely capture exceptions thrown inside the coroutine
+            void unhandled_exception() {
+                result.template emplace<std::exception_ptr>(std::current_exception());
+            }
+        };
+
+        handle_type handle;
+
+        explicit Task(handle_type h) : handle(h) {}
+        ~Task() { if (handle) handle.destroy(); }
+
+        Task(const Task&) = delete;
+        Task& operator=(const Task&) = delete;
+
+        Task(Task&& other) noexcept : handle(std::exchange(other.handle, nullptr)) {}
+        Task& operator=(Task&& other) noexcept {
+            if (this != &other) {
+                if (handle) handle.destroy();
+                handle = std::exchange(other.handle, nullptr);
+            }
+            return *this;
+        }
+
+        bool await_ready() const noexcept { return false; }
+
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<> awaiting_coro) noexcept {
+            handle.promise().continuation = awaiting_coro;
+            return handle;
+        }
+
+        T await_resume() {
+            if (std::holds_alternative<std::exception_ptr>(handle.promise().result)) {
+                // Rethrow any exceptions caught during the background task.
+                std::rethrow_exception(std::get<std::exception_ptr>(handle.promise().result));
+            }
+
+            if (std::holds_alternative<std::monostate>(handle.promise().result)) {
+                throw std::runtime_error("Task finished without a value or exception.");
+            }
+
+            // Move the value out of the promise and return it.
+            return std::move(std::get<T>(handle.promise().result));
+        }
     };
+
+    template <> class [[nodiscard]] Task<void> {
+      public:
+        struct promise_type;
+        using handle_type = std::coroutine_handle<promise_type>;
+
+        struct promise_type {
+            // This stores the handle of the coroutine that called `co_await this_task`
+            std::coroutine_handle<> continuation;
+
+            Task get_return_object() {
+                return Task{handle_type::from_promise(*this)};
+            }
+
+            // Lazy execution: The task does not start until someone co_awaits it.
+            std::suspend_always initial_suspend() noexcept { return {}; }
+
+            // When the task finishes, it checks if someone was waiting for it.
+            struct FinalAwaiter {
+                bool await_ready() const noexcept { return false; }
+
+                std::coroutine_handle<> await_suspend(handle_type h) noexcept {
+                    // If there's a continuation, return its handle.
+                    // The CPU will instantly jump to resuming the caller.
+                    if (auto cont = h.promise().continuation) {
+                        return cont;
+                    }
+                    return std::noop_coroutine();
+                }
+
+                void await_resume() noexcept {}
+            };
+
+            FinalAwaiter final_suspend() noexcept { return {}; }
+
+            void return_void() noexcept {}
+            void unhandled_exception() { std::terminate(); }
+        };
+
+        handle_type handle;
+
+        explicit Task(handle_type h) : handle(h) {}
+        ~Task() { if (handle) handle.destroy(); }
+
+        Task(Task const&) = delete;
+        Task& operator=(Task const&) = delete;
+
+        Task(Task&& other) noexcept : handle(std::exchange(other.handle, nullptr)) {}
+        Task& operator=(Task&& other) noexcept {
+            if (this != &other) {
+                if (handle) handle.destroy();
+                handle = std::exchange(other.handle, nullptr);
+            }
+            return *this;
+        }
+
+        bool await_ready() const noexcept { return false; }
+
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<> awaiting_coro) noexcept {
+            // Store the caller's handle so we can resume them later.
+            handle.promise().continuation = awaiting_coro;
+            // Return our own handle to start executing this task.
+            return handle;
+        }
+
+        void await_resume() noexcept {}
+    };
+
+    struct DetachedTask {
+        struct promise_type {
+            DetachedTask get_return_object() { return {}; }
+            std::suspend_never initial_suspend() noexcept { return {}; }
+            std::suspend_never final_suspend() noexcept { return {}; }
+            void return_void() noexcept {}
+            void unhandled_exception() { std::terminate(); }
+        };
+    };
+
+    template <typename T> DetachedTask spawn(Task<T> t) {
+        co_await std::move(t);
+    }
 
     /// Defines a game runnable by a game executor. The default is `run(game)`.
     ///
@@ -734,6 +1024,8 @@ namespace rt {
     /// and can be run in many ways, this is just one implementation.
     static void run(Instance auto game, char const* title, i32 width, i32 height, i32 scale) {
         static std::atomic<bool> is_running = false;
+
+        rt::detail::main_executor(); // Initialize the main executor instance.
 
         SdlIo io;
         Io::unsafe_push_threadlocal_io(&io);
@@ -914,28 +1206,30 @@ namespace rt {
 
                 game.update(io, input, sound_stage);
 
-                // I hate this code, I remember getting buffers to output correctly
+                // I hate this code.
                 if (audio_stream) {
-                    // Find out how many samples SDL currently has queued
+                    // Find out how many samples SDL currently has queued.
                     i32 available_audio_samples = SDL_GetAudioStreamAvailable(audio_stream) / sizeof(f32);
-                    // We target keeping exactly 4800 samples queued at all times
+                    // We target keeping exactly 4800 samples queued at all times.
                     i32 samples_to_push = 4800 - available_audio_samples;
 
                     if (samples_to_push > 0) {
-                        // Clamp just in case, though it shouldn't normally exceed 4800.
+                        // Clamp just in case.
                         samples_to_push = std::min(samples_to_push, 4800);
                         // Evaluate the 4800-sample window from the current time_point.
                         auto output = sound_stage.finalize();
-                        // Push exactly what is missing from the START of our generated window.
+                        // Push exactly what is missing from the start of our generated window.
                         SDL_PutAudioStreamData(audio_stream, output.data, samples_to_push * sizeof(f32));
                         // Advance the SoundStage timeline by exactly what we appended to the queue.
-                        // Next frame, SoundStage will seamlessly pick up exactly where we left off.
                         sound_stage.advance_time_and_clear_buffer(samples_to_push);
                     }
                 }
             });
             game.draw(io, input, target);
             if (perf_overlay) draw_perf_overlay();
+
+            detail::main_executor().drain();
+            io.poll_async();
 
             SDL_RenderClear(renderer);
 

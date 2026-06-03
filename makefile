@@ -2,6 +2,8 @@
 # It is not actually used for building anything, all of that is specified with CMake.
 # These are mostly used as Zed tasks but I define them here for compatibility with other workflows.
 
+BUILD_TYPE ?= Release
+
 all: setup
 
 # Counts the lines of code :)
@@ -21,9 +23,10 @@ clangd-cross:
 
 setup: clangd-build
 	@rm -rf build
-	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
         -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
-        -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++
+        -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+        -DCMAKE_CXX_FLAGS="-fsanitize=bounds,local-bounds -fsanitize-trap=bounds,local-bounds"
 
 build: setup
 	@cd build; ninja

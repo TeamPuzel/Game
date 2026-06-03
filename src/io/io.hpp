@@ -31,6 +31,33 @@ class Io {
         virtual ~Error() noexcept {}
     };
 
+    class AsyncNotAvailableError final : public std::exception {
+      public:
+        constexpr AsyncNotAvailableError() {}
+
+        AsyncNotAvailableError(AsyncNotAvailableError const&) = delete;
+        AsyncNotAvailableError(AsyncNotAvailableError&&) = delete;
+        auto operator=(AsyncNotAvailableError const&) -> AsyncNotAvailableError& = delete;
+        auto operator=(AsyncNotAvailableError&&) -> AsyncNotAvailableError& = delete;
+        virtual ~AsyncNotAvailableError() noexcept {}
+    };
+
+    class Async {
+      public:
+        friend class Io;
+
+      protected:
+        Async() noexcept {}
+
+      public:
+        Async(Async const&) = delete;
+        Async(Async&&) = delete;
+        auto operator=(Async const&) -> Async& = delete;
+        auto operator=(Async&&) -> Async& = delete;
+
+        virtual ~Async() noexcept {}
+    };
+
   protected:
     Io() noexcept {}
 
@@ -128,6 +155,10 @@ class Io {
             throw std::runtime_error("no thread local io present");
         }
         return *threadlocal_io_stack.back();
+    }
+
+    virtual auto async() -> Async& {
+        throw AsyncNotAvailableError();
     }
 };
 

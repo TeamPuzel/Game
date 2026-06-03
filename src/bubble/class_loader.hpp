@@ -11,6 +11,7 @@ namespace bubble::class_loader {
     static bool SWAPPED_REGISTRY = false;
     static std::unordered_map<std::string, Io::DynamicLibrary> REGISTRY_0;
     static std::unordered_map<std::string, Io::DynamicLibrary> REGISTRY_1;
+    static std::mutex loader_mutex;
 
     struct DynamicObjectDescriptor final {
         ObjectRebuilder rebuilder;
@@ -24,6 +25,8 @@ namespace bubble::class_loader {
     /// We can use this to load objects from shared libraries. Once there is a built-in level editor
     /// It will be possible to hot reload classes on the fly very conveniently.
     static auto load(Io& io, std::string_view classname) -> DynamicObjectDescriptor {
+        std::lock_guard lock(loader_mutex);
+
         auto& reg = SWAPPED_REGISTRY ? REGISTRY_0 : REGISTRY_1;
 
         std::stringstream library_path;
@@ -54,16 +57,19 @@ namespace bubble::class_loader {
 
     /// Swaps which registry is active, since we need to be able to destroy old objects while creating new ones.
     static void swap_registry() {
+        std::lock_guard lock(loader_mutex);
         SWAPPED_REGISTRY = !SWAPPED_REGISTRY;
     }
 
     /// Closes shared libraries for the inactive registry.
     static void drop_old_object_classes() {
+        std::lock_guard lock(loader_mutex);
         auto& reg = SWAPPED_REGISTRY ? REGISTRY_1 : REGISTRY_0;
         reg.clear();
     }
 
     static void clear() {
+        std::lock_guard lock(loader_mutex);
         REGISTRY_0.clear();
         REGISTRY_1.clear();
     }

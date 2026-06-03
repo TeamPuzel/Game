@@ -56,6 +56,7 @@ namespace bubble {
         std::unordered_set<Object*> removal_queue;
         usize tick = 0;
         Grid<Image> sheet;
+        Box<SoundLibrary> sounds;
 
         mutable Image nes_target = Image(32 * 8, 30 * 8);
 
@@ -119,7 +120,8 @@ namespace bubble {
 
       public:
         /// Loading a class can take a while so it is might be useful to cache them ahead of time.
-        static void preload_object_classes(Io& io) {
+        static rt::DetachedTask preload_object_classes(Io& io) {
+            co_await rt::enqueue();
             for (auto classname : object_registry) class_loader::load(io, classname);
         }
 
@@ -186,8 +188,8 @@ namespace bubble {
             });
         }
 
-        Stage(Io& io, u8 index, Grid<Image>&& sheet, GameMode mode, bool start_as_editor = false)
-            : sheet(std::move(sheet)), mode(mode), stage_index(index), editor_mode(start_as_editor) {}
+        Stage(Io& io, u8 index, Grid<Image> sheet, Box<SoundLibrary> sounds, GameMode mode, bool start_as_editor = false)
+            : sheet(std::move(sheet)), sounds(std::move(sounds)), mode(mode), stage_index(index), editor_mode(start_as_editor) {}
 
         ~Stage() noexcept {
             // Make sure that we no longer hold on to objects, we can't destroy them after clearing the class loader.
@@ -349,7 +351,7 @@ namespace bubble {
             }
 
             if (tick == 0) sound.play(
-                sound::Wave::from(io.read_oggfile("res/snes_staff_roll.ogg"))
+                sounds->get("gameplay").clone()
                     | sound::trim_back(sound::duration<>::seconds(2) - sound::duration<>::milliseconds(500))
                     | sound::loop(sound::duration<>::seconds(9))
             );
@@ -678,8 +680,8 @@ namespace bubble {
         /// - x (i32)
         /// - y (i32)
         /// - userdata (128 u8)
-        static auto load(Io& io, u8 index, Grid<Image> sheet, GameMode mode, bool start_as_editor = false) -> Box<Stage> {
-            auto ret = Box<Stage>::make(io, index, std::move(sheet), mode, start_as_editor);
+        static auto load(Io& io, u8 index, Grid<Image> sheet, Box<SoundLibrary> sounds, GameMode mode, bool start_as_editor = false) -> Box<Stage> {
+            auto ret = Box<Stage>::make(io, index, std::move(sheet), std::move(sounds), mode, start_as_editor);
             ret->reload(io);
             return ret;
         }

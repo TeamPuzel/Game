@@ -8,12 +8,24 @@ namespace bubble {
     class Title final : public Scene {
         u32 tick = 0;
         Grid<Image> sheet;
+        Box<SoundLibrary> sounds;
         i32 menu_selection = 0;
 
         static constexpr i32 MENU_SELECTION_END = 4;
 
       public:
-        Title(Io& io, Grid<Image> sheet) : sheet(std::move(sheet)) {}
+        Title(Io& io, Grid<Image> sheet) : sheet(std::move(sheet)) {
+            sounds = Box<SoundLibrary>::make();
+            using enum SoundLibrary::SoundRequest::Type;
+
+            // The async loader is FIFO so these should be in the order they're likely needed.
+            sounds->enqueue("title",    "res/snes_bubble_bustin.ogg", Ogg);
+            sounds->enqueue("gameplay", "res/snes_staff_roll.ogg",    Ogg);
+            sounds->enqueue("score",    "res/snes_champion.ogg",      Ogg);
+            sounds->enqueue("controls", "res/snes_pro_player.ogg",    Ogg);
+
+            sounds->fetch(io);
+        }
 
         Title(Io& io) : Title(io,
             draw::TgaImage::from(io.read_file("res/tiles.tga"))
@@ -23,16 +35,16 @@ namespace bubble {
 
         void start(Io& io) {
             switch (menu_selection) {
-                case 0: transition(Stage::load(io, 1, std::move(sheet), GameMode::OnePlayer));       break;
-                case 1: transition(Stage::load(io, 1, std::move(sheet), GameMode::TwoPlayer));       break;
-                case 2: transition(Stage::load(io, 1, std::move(sheet), GameMode::TwoPlayerVersus)); break;
-                case 3: transition(Box<ScoreBoard>::make(io, std::move(sheet))); break;
-                case 4: transition(Box<Controls>::make(io, std::move(sheet)));   break;
+                case 0: transition(Stage::load(io, 1, std::move(sheet), std::move(sounds), GameMode::OnePlayer));       break;
+                case 1: transition(Stage::load(io, 1, std::move(sheet), std::move(sounds), GameMode::TwoPlayer));       break;
+                case 2: transition(Stage::load(io, 1, std::move(sheet), std::move(sounds), GameMode::TwoPlayerVersus)); break;
+                case 3: transition(Box<ScoreBoard>::make(io, std::move(sheet), std::move(sounds))); break;
+                case 4: transition(Box<Controls>::make(io, std::move(sheet), std::move(sounds)));   break;
             }
         }
 
         void start_editor(Io& io) {
-            transition(Stage::load(io, 1, std::move(sheet), GameMode::OnePlayer, true));
+            transition(Stage::load(io, 1, std::move(sheet), std::move(sounds), GameMode::OnePlayer, true));
         }
 
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
@@ -40,10 +52,7 @@ namespace bubble {
             using rt::Button;
 
             if (tick == 0) {
-                sound.play(
-                    sound::Wave::from(io.read_oggfile("res/snes_bubble_bustin.ogg"))
-                        | sound::loop()
-                );
+                sound.play(sounds->get("title").clone() | sound::loop());
             }
 
             if (input.gamepad_pressed(Button::Up) or input.key_repeating(Key::Up)) {

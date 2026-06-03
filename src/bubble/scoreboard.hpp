@@ -26,6 +26,7 @@ namespace bubble {
       private:
         u32 tick = 0;
         Grid<Image> sheet;
+        Box<SoundLibrary> sounds;
 
         // This is more than enough, and it fits the NES resolution in a pleasing way.
         static constexpr auto NAME_LENGTH = 18;
@@ -72,7 +73,7 @@ namespace bubble {
 
         struct CrossChar { char character; i32 index; };
 
-        static decltype(auto) cross_input_range() {
+        static auto cross_input_range() {
             return std::views::iota(0, 53) | std::views::transform([] (i32 i) -> CrossChar {
                 if (i < 26) {
                     return { char('Z' - i), i };
@@ -178,8 +179,8 @@ namespace bubble {
         }
 
       public:
-        ScoreBoard(Io& io, Grid<Image> sheet, std::queue<PendingScore> pending = {})
-            : sheet(std::move(sheet)), score_input(not pending.empty()), pending(std::move(pending))
+        ScoreBoard(Io& io, Grid<Image> sheet, Box<SoundLibrary> sounds, std::queue<PendingScore> pending = {})
+            : sheet(std::move(sheet)), sounds(std::move(sounds)), score_input(not pending.empty()), pending(std::move(pending))
         {
             reset_input_state();
             load(io);
@@ -189,6 +190,7 @@ namespace bubble {
             draw::TgaImage::from(io.read_file("res/tiles.tga"))
                 | draw::flatten<Image>()
                 | draw::grid(16, 16),
+            {},
             std::move(pending)
         ) {}
 
@@ -239,10 +241,7 @@ namespace bubble {
         void return_to_title(Io& io);
 
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
-            if (tick == 0) sound.play(
-                sound::Wave::from(io.read_oggfile("res/snes_champion.ogg"))
-                    | sound::loop()
-            );
+            if (tick == 0 and sounds) sound.play(sounds->get("score").clone() | sound::loop());
 
             if (input.gamepad_pressed(rt::Button::A) or input.key_pressed(rt::Key::Enter)) {
                 if (score_input) {
@@ -285,9 +284,9 @@ namespace bubble {
         void draw(Io& io, rt::Input const& input, Ref<Image> target) const override {
             auto large_sheet = sheet.inner | draw::as_ref() | draw::grid(32, 32);
 
-            auto pending_score = pending.front();
-
             if (score_input) {
+                auto pending_score = pending.front();
+
                 target
                     | draw::clear()
                     | draw::draw(

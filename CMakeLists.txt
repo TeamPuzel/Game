@@ -16,17 +16,18 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -Wno-unused -Wpedantic -Wno-logical-op-parentheses -Wno-c++26-extensions -Wno-pre-c++26-compat -Wno-tautological-compare")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -Wno-unused -Wunused-value -Wpedantic -Wno-logical-op-parentheses -Wno-c++26-extensions -Wno-pre-c++26-compat -Wno-tautological-compare")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ftrivial-auto-var-init=pattern")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wno-deprecated-declarations")
+    add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
 else()
     # AI generated MSVC flag equivalent nonsense:
 
     # /W4 is the practical equivalent of -Wall. (MSVC's actual /Wall is extremely noisy).
-    # /Zi generates debugging information (like -g).
+    # /Zi generates debugging information (like -g). (UPDATE: needs Z7 or the dumb thing will race condition and die).
     # /permissive- enforces strict C++ standard conformance (like -Wpedantic).
     # /wd4100 /wd4101 /wd4189 disable specific "unused" warnings.
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8 /W4 /Zi /permissive- /wd4100 /wd4101 /wd4189")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8 /W4 /Z7 /permissive- /wd4100 /wd4101 /wd4189")
 
     # /RTC1 enables runtime checks, including catching uninitialized locals by filling them
     # with a pattern (0xCC), which is the MSVC equivalent of -ftrivial-auto-var-init=pattern.

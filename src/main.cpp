@@ -50,7 +50,7 @@ class Game final {
     }
 
     void draw(Io& io, rt::Input const& input, draw::Ref<draw::Image> target) const {
-        scene->draw(io, input, target);
+        if (not bubble::Scene::transitioning()) scene->draw(io, input, target);
     }
 };
 
