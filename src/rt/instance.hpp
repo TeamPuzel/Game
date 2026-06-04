@@ -139,7 +139,8 @@ class SdlIo final : public Io {
 
     void perform_set_environment(char const* name, std::optional<std::string_view> value) override {
         if (value) {
-            SDL_SetEnvironmentVariable(SDL_GetEnvironment(), name, value->data(), true);
+            std::string null_terminated(*value);
+            SDL_SetEnvironmentVariable(SDL_GetEnvironment(), name, null_terminated.c_str(), true);
         } else {
             SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), name);
         }
