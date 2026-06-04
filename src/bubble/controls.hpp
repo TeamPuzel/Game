@@ -14,7 +14,7 @@ namespace bubble {
         void return_to_title(Io& io);
 
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
-            if (tick == 0) sound.play(sounds->get("controls").clone() | sound::loop());
+            if (tick == 0) sound.play(sounds->get("music::controls").clone() | sound::loop());
 
             if (input.key_pressed(rt::Key::Enter) or input.gamepad_pressed(rt::Button::A)) {
                 sound.stop();

@@ -236,7 +236,7 @@ namespace rt {
     };
 
     // This is just a temporary packed controller struct for NES games.
-    // I don't feel like designing a good, generic controller API for now and this is enough for this game.
+    // I don't feel like designing a good, generic controller API for now and this is enough for the game.
     struct [[deprecated]] GamePadState final {
         bool up     : 1 = false;
         bool down   : 1 = false;
@@ -1132,7 +1132,8 @@ namespace rt {
         // until std::scope_exit is implemented >:(
         // Alternatively one could make all the code atrocious by wrapping SDL pointers in unique pointers
         // with deleters but that's rather unreadable.
-        ScopeExit scope_exit = [=] {
+        ScopeExit scope_exit = [&] {
+            game.deinit(io);
             Io::unsafe_pop_threadlocal_io();
             if (audio_stream) SDL_DestroyAudioStream(audio_stream);
             SDL_DestroyTexture(texture);
@@ -1168,7 +1169,6 @@ namespace rt {
             while (SDL_PollEvent(&event)) {
                 switch (event.type) {
                     case SDL_EVENT_QUIT:
-                        game.deinit(io);
                         goto end;
                     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: apply_window_size(); break;
                     default: break;

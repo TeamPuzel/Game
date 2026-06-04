@@ -54,6 +54,17 @@ namespace bubble {
             return true;
         }
 
+        constexpr auto replay(T anim, u32 count = 1, u32 speed = 0, u32 loop = 0) noexcept -> bool {
+            this->current = anim;
+            this->frame = 0;
+            this->counter = speed;
+            this->count = std::max(1u, count);
+            this->loop = loop;
+            this->speed = speed;
+
+            return true;
+        }
+
         constexpr void set_speed(u32 step) noexcept {
             this->speed = step;
         }

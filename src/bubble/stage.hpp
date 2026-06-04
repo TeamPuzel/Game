@@ -12,6 +12,7 @@
 #include "scene.hpp"
 #include "object.hpp"
 #include "class_loader.hpp"
+#include "scoreboard.hpp"
 
 namespace bubble {
     enum class GameMode {
@@ -44,14 +45,19 @@ namespace bubble {
         constexpr auto hit(i32 back, i32 forward) const -> bool {
             return distance > -back and distance < forward;
         };
+
+        constexpr auto hit(i32 both) const -> bool {
+            return hit(both, both);
+        }
     };
 
     static_assert(sizeof(Tile) == 1);
 
     /// A coroutine class representing the state of a loaded stage.
     ///
-    /// TODO: Most of the object logic can and probably should be made part of the supertype.
-    class Stage final : public Scene {
+    /// This MUSN'T be final. Compilers are too smart and WILL devirtualize calls to a final stage, which will
+    /// cause linkage errors because objects are compiled to separate shared libraries and rely on vtables!
+    class Stage : public Scene {
         std::vector<Box<Object>> objects;
         std::unordered_set<Object*> removal_queue;
         usize tick = 0;
@@ -60,9 +66,10 @@ namespace bubble {
 
         mutable Image nes_target = Image(32 * 8, 30 * 8);
 
-        static constexpr auto WIDTH      = 32;
-        static constexpr auto HEIGHT     = 30;
-        static constexpr auto START_TICK = 9 * 60; // 7-8 if the intro has a transition, 9 if not.
+        static constexpr auto WIDTH          = 32;
+        static constexpr auto HEIGHT         = 30;
+        static constexpr auto START_TICK     = 9 * 60; // 7-8 if the intro has a transition, 9 if not.
+        static constexpr auto GAME_END_DELAY = 60 * 2;
 
         std::array<Tile, WIDTH * HEIGHT> tiles;
 
@@ -71,6 +78,9 @@ namespace bubble {
         u8 bob_lives = 2;
         u32 bub_score = 0;
         u32 bob_score = 0;
+
+        bool should_check_for_game_end = false;
+        i32 game_end_timer = 0;
 
         u8 stage_index = 1;
         bool editor_mode = false;
@@ -128,6 +138,14 @@ namespace bubble {
         auto tile(i32 x, i32 y) -> Tile& { return tiles.at(x + y * WIDTH); }
         auto tile(i32 x, i32 y) const -> Tile const& { return tiles.at(x + y * WIDTH); }
 
+        auto tile_at(i32 x, i32 y) -> std::optional<Tile> {
+            if (x >= 0 and x < WIDTH * 8 and y >= 0 and y < HEIGHT * 8) {
+                return tile(x / 8, y / 8);
+            } else {
+                return std::nullopt;
+            }
+        }
+
         auto solid_at(i32 x, i32 y) const -> bool {
             if (x >= 0 and x < WIDTH * 8 and y >= 0 and y < HEIGHT * 8) {
                 return tile(x / 8, y / 8).id != 0;
@@ -136,8 +154,30 @@ namespace bubble {
             }
         }
 
+        auto super_solid_at(i32 x, i32 y) const -> bool {
+            if (x >= 0 and x < WIDTH * 8 and y >= 0 and y < HEIGHT * 8) {
+                return tile(x / 8, y / 8).current == (u8) Tile::Current::Solid;
+            } else {
+                return false;
+            }
+        }
+
+        auto solid_at(Object* relative_space, i32 x, i32 y) const -> bool {
+            auto [ox, oy] = relative_space->pixel_pos();
+            return solid_at(x + ox, y + oy);
+        }
+
+        auto super_solid_at(Object* relative_space, i32 x, i32 y) const -> bool {
+            auto [ox, oy] = relative_space->pixel_pos();
+            return super_solid_at(x + ox, y + oy);
+        }
+
         auto get_sheet() const -> Grid<Ref<const Image>> {
             return sheet.ref();
+        }
+
+        auto get_sounds() -> SoundLibrary& {
+            return *sounds;
         }
 
         auto in_editor_mode() const -> bool { return editor_mode; }
@@ -187,6 +227,10 @@ namespace bubble {
                 return box.raw();
             });
         }
+
+        virtual void lose_life_bub();
+        virtual void lose_life_bob();
+        virtual void check_for_game_end();
 
         Stage(Io& io, u8 index, Grid<Image> sheet, Box<SoundLibrary> sounds, GameMode mode, bool start_as_editor = false)
             : sheet(std::move(sheet)), sounds(std::move(sounds)), mode(mode), stage_index(index), editor_mode(start_as_editor) {}
@@ -351,13 +395,35 @@ namespace bubble {
             }
 
             if (tick == 0) sound.play(
-                sounds->get("gameplay").clone()
+                sounds->get("music::gameplay").clone()
                     | sound::trim_back(sound::duration<>::seconds(2) - sound::duration<>::milliseconds(500))
                     | sound::loop(sound::duration<>::seconds(9))
             );
 
             if (tick >= START_TICK) {
-                for (auto const& object : objects) object->update(io, input, sound, *this);
+                if (should_check_for_game_end) {
+                    check_for_game_end();
+                    should_check_for_game_end = false;
+                }
+
+                if (game_end_timer) game_end_timer -= 1;
+
+                if (game_end_timer == 1) {
+                    std::queue<ScoreBoard::PendingScore> queue;
+
+                    queue.push({ .character = ScoreBoard::Character::Bub, .score = bub_score });
+                    if (mode == GameMode::TwoPlayer)
+                        queue.push({ .character = ScoreBoard::Character::Bob, .score = bob_score });
+
+                    sound.stop();
+                    transition(Box<bubble::ScoreBoard>::make(
+                        io, std::move(sheet), std::move(sounds), std::move(queue))
+                    );
+                }
+
+                // We can add more objects during an object update so we can't use a range loop as that
+                // could sometimes invalidate the iterator if the vector has to resize.
+                for (usize i = 0; i < objects.size(); i += 1) objects[i]->update(io, input, sound, *this);
             }
 
             apply_removal_queue();
@@ -594,10 +660,13 @@ namespace bubble {
             }
 
             if (not editor_mode) { // HUD.
+                auto above_space_target = (target | draw::as_slice())
+                    .resize_bottom(-(HEIGHT - 4) * 8);
+
+                // above_space_target | draw::clear(draw::color::BLACK);
+
                 // Fit the HUD area and pad edges.
-                auto hud_target = (target | draw::as_slice())
-                    .resize_bottom(-(HEIGHT - 4) * 8)
-                    .resize(-4);
+                auto hud_target = above_space_target.resize(-4);
 
                 auto total_seconds = (tick - START_TICK) / 60;
                 auto minutes = total_seconds / 60;

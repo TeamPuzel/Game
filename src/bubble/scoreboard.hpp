@@ -241,7 +241,7 @@ namespace bubble {
         void return_to_title(Io& io);
 
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
-            if (tick == 0 and sounds) sound.play(sounds->get("score").clone() | sound::loop());
+            if (tick == 0 and sounds) sound.play(sounds->get("music::score").clone() | sound::loop());
 
             if (input.gamepad_pressed(rt::Button::A) or input.key_pressed(rt::Key::Enter)) {
                 if (score_input) {

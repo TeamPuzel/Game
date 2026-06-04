@@ -36,7 +36,7 @@ namespace bubble {
             }
         }
 
-        void update(Io& io, rt::Input const& input, rt::SoundStage&, Stage& stage) noexcept override;
+        void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
 
         void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
             target | draw::draw(

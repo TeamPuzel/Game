@@ -3,14 +3,21 @@
 
 using namespace bubble;
 
-void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage&, Stage& stage) noexcept {
+void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {
     tick += 1;
 
     wrap_position();
 
+    for (auto obj : stage.objs()) {
+        if (auto player = flat_cast<Player>(obj)) {
+            if (math::abs(player->position.x - position.x) < 8 and math::abs(player->position.y - position.y) < 8)
+                player->damage();
+        }
+    }
+
     switch (state) {
         case State::Grounded: {
-            const u32 hash = (tick * 13) + (i32(position.x) * 7);
+            const u32 hash = std::max<u32>(1, (tick * 13) + (i32(position.x) * 7) + usize(this));
 
             if ((hash % 256) < 12) {
                 const auto sensor_a =
@@ -22,12 +29,27 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage&, Stage& sta
                     ? sensor_b
                     : sensor_a;
 
-                if (sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE) {
+                if (
+                    sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE and
+                    (position.y - (HEIGHT_RADIUS - 8 * 5)) > (8 * 4) // Do not jump out of bounds.
+                ) {
                     for (auto obj : stage.objs()) {
                         if (flat_cast<Player>(obj) and obj->position.y < position.y) {
                             state = State::Jumping;
                             jump_lock = 30;
                         }
+                    }
+                }
+            } else if ((hash % 256) < 14) {
+                for (auto obj : stage.objs()) {
+                    if (
+                        flat_cast<Player>(obj) and
+                        (
+                            obj->position.x < position.x and facing == Facing::Right or
+                            obj->position.x > position.x and facing == Facing::Left
+                        )
+                    ) {
+                        flip();
                     }
                 }
             }

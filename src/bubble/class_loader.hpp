@@ -8,10 +8,10 @@
 #include "object.hpp"
 
 namespace bubble::class_loader {
-    static bool SWAPPED_REGISTRY = false;
-    static std::unordered_map<std::string, Io::DynamicLibrary> REGISTRY_0;
-    static std::unordered_map<std::string, Io::DynamicLibrary> REGISTRY_1;
-    static std::mutex loader_mutex;
+    inline bool SWAPPED_REGISTRY = false;
+    inline std::unordered_map<std::string, Io::DynamicLibrary> REGISTRY_0;
+    inline std::unordered_map<std::string, Io::DynamicLibrary> REGISTRY_1;
+    inline std::mutex loader_mutex;
 
     struct DynamicObjectDescriptor final {
         ObjectRebuilder rebuilder;

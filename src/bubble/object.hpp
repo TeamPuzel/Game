@@ -68,6 +68,7 @@ namespace bubble {
             constexpr i32 screen_width = 32 * 8;                        // 256 px
             constexpr i32 screen_height = 30 * 8;                       // 240 px
             constexpr i32 top_margin = 4 * 8;                           // 32  px
+            // constexpr i32 top_margin = 0;                               // 0   px
             constexpr i32 playable_height = screen_height - top_margin; // 208 px
 
             // Horizontal wrap.

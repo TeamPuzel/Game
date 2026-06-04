@@ -1,12 +1,35 @@
 #pragma once
 #include <bubble>
+#include "meta/StartPoint.hpp"
 
 namespace bubble {
     class Bubble final : public Object {
       public:
-        void update(Io& io, rt::Input const& input, rt::SoundStage&, Stage& stage) noexcept override {
+        enum class LaunchDirection : u8 { Left, Right } launch_direction;
+        u32 launch_timer = 30;
+        u32 pop_timer = 0;
+        Box<Object> held_object;
 
+        explicit Bubble(point<fixed> position, LaunchDirection launch_direction) : launch_direction(launch_direction) {
+            this->position = position;
         }
+
+        static constexpr i32 LAUNCH_SPEED = 2;
+        static constexpr i32 WIDTH_RADIUS = 7;
+        static constexpr i32 HEIGHT_RADIUS = 7;
+
+        auto is_popped() const -> bool {
+            return pop_timer;
+        }
+
+        void apply_launch() {
+            switch (launch_direction) {
+                case LaunchDirection::Left:  position.x -= LAUNCH_SPEED; break;
+                case LaunchDirection::Right: position.x += LAUNCH_SPEED; break;
+            }
+        }
+
+        void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
 
         void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
             target | draw::draw(
@@ -22,6 +45,7 @@ namespace bubble {
             None,
             Idle,
             Walk,
+            Attack,
             Death
         };
 
@@ -37,11 +61,32 @@ namespace bubble {
             Death
         } state = State::Airborne;
 
+        usize tick = 0;
+        i32 attack_timer = 0;
+        i32 jump_timer = 0;
+        i32 death_timer = 0;
+        i32 invulnerability_timer = 0;
+        point<fixed> air_velocity;
+        bool standing_jump = false;
+        Facing jump_direction = Facing::Right;
+
         static constexpr fixed FALL_SPEED = 1;
+        static constexpr fixed AIR_SPEED = 1;
+        static constexpr fixed RESTRICTED_AIR_SPEED = fixed(0, 128);
         static constexpr fixed SPEED = 1;
+        static constexpr fixed JUMP_FORCE = -3;
+        static constexpr fixed GRAVITY_FORCE = fixed(0, 28);
+        static constexpr fixed AIR_CONTROL_FORCE = fixed(0, 12);
+        static constexpr fixed AIR_FRICTION = fixed(0, 8);
+        static constexpr fixed FREE_AIR_FRICTION = fixed(0, 16);
         static constexpr i32 WIDTH_RADIUS = 7;
         static constexpr i32 HEIGHT_RADIUS = 7;
         static constexpr i32 SNAP_DISTANCE = 2;
+        static constexpr i32 ATTACK_DELAY = 30;
+        static constexpr i32 ATTACK_ANIMATION_TRIM = 10;
+        static constexpr i32 JUMP_DELAY = 30;
+        static constexpr i32 DEATH_DELAY = 60;
+        static constexpr i32 INVULNERABILITY_DELAY = 60 * 4;
 
       private:
         auto get_input_left(rt::Input const& input) const -> bool {
@@ -80,63 +125,32 @@ namespace bubble {
             }
         }
 
-      public:
-        void update(Io& io, rt::Input const& input, rt::SoundStage&, Stage& stage) noexcept override {
-            animator.update();
-
-            if (animator.is(Animation::None)) {
-                animator.play(Animation::Idle, 2, 12);
-            }
-
-            bool left = get_input_left(input);
-            bool right = get_input_right(input);
-            bool attack = get_input_attack(input);
-            bool jump = get_input_jump(input);
-
-            if (left and not right) facing = Facing::Left;
-            if (right and not left) facing = Facing::Right;
-
-            switch (state) {
-                case State::Grounded: {
-                    if (left and not right) position.x -= 1;
-                    if (right and not left) position.x += 1;
-
-                    if (left or right and not animator.is(Animation::Walk)) {
-                        animator.play(Animation::Walk, 4, 6);
-                    }
-
-                    if (not left and not right and animator.is(Animation::Walk)) {
-                        animator.play(Animation::Idle, 2, 12);
-                    }
-                } break;
-                case State::Airborne: {
-                    const auto sensor_a = stage.sense(this, -WIDTH_RADIUS, HEIGHT_RADIUS, SensorDirection::Down);
-                    const auto sensor_b = stage.sense(this,  WIDTH_RADIUS, HEIGHT_RADIUS, SensorDirection::Down);
-
-                    const auto sensor = sensor_b.distance < sensor_a.distance
-                        ? sensor_b
-                        : sensor_a;
-
-                    if (sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE) {
-                        position.y += sensor.distance;
-                        state = State::Grounded;
-                    }
-
-                    position.y += 1;
-                } break;
-                case State::Jumping: {
-
-                } break;
-                case State::Death: {
-
-                } break;
+        auto bubble_launch_direction() const -> Bubble::LaunchDirection {
+            switch (facing) {
+                case Facing::Left:  return Bubble::LaunchDirection::Left;
+                case Facing::Right: return Bubble::LaunchDirection::Right;
             }
         }
 
+      public:
+        void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
+
         void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
+            auto sprite = [&] {
+                if (state == State::Death)
+                    return stage.get_sheet().tile(animator.at() + (death_timer <= 10 ? 4 : 0), 3);
+
+                if (std::max(0, attack_timer - ATTACK_ANIMATION_TRIM)) return stage.get_sheet().tile(0, 2);
+
+                return stage.get_sheet().tile(animator.at(), 0);
+            }();
+
             target | draw::draw(
-                stage.get_sheet().tile(animator.at(), 0)
+                sprite
                     | draw::apply_if(facing == Facing::Right, draw::mirror_x())
+                    | draw::apply_if(invulnerability_timer, draw::map([this] (Color c) -> Color {
+                        return tick % 2 == 0 ? c : draw::color::CLEAR;
+                    }))
                     | draw::apply_if(character == Character::Bob, draw::map([] (Color c) -> Color {
                         if (c == Color::rgba(92, 230, 52)) return Color::rgba(76, 206, 220);
                         if (c == Color::rgba(252, 130, 116)) return Color::rgba(196, 118, 252);
@@ -144,6 +158,39 @@ namespace bubble {
                     })),
                 -8, -8
             );
+        }
+
+        void move_to_start_point(Stage const& stage) {
+            point<fixed> destination = { 64, 64 }; // Sane fallback.
+
+            for (auto obj : stage.objs()) {
+                if (auto start_point = flat_cast<StartPoint>(obj)) {
+                    destination = start_point->position;
+
+                    switch (start_point->facing) {
+                        case StartPoint::Facing::Left:  facing = Facing::Left; break;
+                        case StartPoint::Facing::Right: facing = Facing::Right; break;
+                    }
+
+                    break;
+                }
+            }
+
+            position = destination;
+        }
+
+        void lose_life(Stage& stage) {
+            switch (character) {
+                case Character::Bub: (&stage)->lose_life_bub(); break;
+                case Character::Bob: (&stage)->lose_life_bob(); break;
+            }
+        }
+
+        void damage() noexcept {
+            if (state != State::Death and not invulnerability_timer) {
+                death_timer = DEATH_DELAY;
+                state = State::Death;
+            }
         }
 
         void flip() noexcept override {

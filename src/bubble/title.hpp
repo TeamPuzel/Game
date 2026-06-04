@@ -25,10 +25,14 @@ namespace bubble {
             using enum SoundLibrary::SoundRequest::Type;
 
             // The async loader is FIFO so these should be in the order they're likely first needed.
-            sounds->enqueue("title",    "res/snes_bubble_bustin.ogg", Ogg);
-            sounds->enqueue("gameplay", "res/snes_staff_roll.ogg",    Ogg);
-            sounds->enqueue("score",    "res/snes_champion.ogg",      Ogg);
-            sounds->enqueue("controls", "res/snes_pro_player.ogg",    Ogg);
+            sounds->enqueue("music::title",    "res/snes_bubble_bustin.ogg", Ogg);
+            sounds->enqueue("music::gameplay", "res/snes_staff_roll.ogg",    Ogg);
+            sounds->enqueue("music::score",    "res/snes_champion.ogg",      Ogg);
+            sounds->enqueue("music::controls", "res/snes_pro_player.ogg",    Ogg);
+
+            sounds->enqueue("sfx::launch", "res/sfx_2.wav",  Wave);
+            sounds->enqueue("sfx::jump",   "res/sfx_9.wav",  Wave);
+            sounds->enqueue("sfx::death",  "res/sfx_13.wav", Wave);
 
             sounds->fetch(io);
         }
@@ -52,7 +56,7 @@ namespace bubble {
             using rt::Button;
 
             if (tick == 0) {
-                sound.play(sounds->get("title").clone() | sound::loop());
+                sound.play(sounds->get("music::title").clone() | sound::loop());
             }
 
             if (input.gamepad_pressed(Button::Up) or input.key_repeating(Key::Up)) {
