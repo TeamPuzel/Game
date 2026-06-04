@@ -3,6 +3,7 @@
 using namespace bubble;
 
 void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {
+    tick += 1;
     wrap_position();
 
     if (launch_timer) launch_timer -= 1;
@@ -12,6 +13,19 @@ void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
 
     if (launch_timer) {
         apply_launch();
+
+        for (auto obj : stage.objs()) {
+            if (auto enemy = flat_cast<Enemy>(obj)) {
+                auto dx = position.x - enemy->position.x;
+                auto dy = position.y - enemy->position.y;
+
+                if (math::abs(dx) < WIDTH_RADIUS * 2 and math::abs(dy) < HEIGHT_RADIUS * 2) {
+                    held_enemy = stage.take(enemy);
+                    launch_timer = 0;
+                    break;
+                }
+            }
+        }
     } else {
         auto [x, y] = pixel_pos();
         auto tile = stage.tile_at(x, y);
@@ -46,7 +60,43 @@ void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
                     if (dx == 0 and dy == 0) position.x += 1;
                 }
             } else if (auto player = flat_cast<Player>(obj)) {
+                auto dx = position.x - player->position.x;
+                auto dy = position.y - player->position.y;
 
+                if (math::abs(dx) < WIDTH_RADIUS * 2 and math::abs(dy) < HEIGHT_RADIUS * 2) {
+                    if (math::abs(player->position.y - position.y) < 4) {
+                        position.x += math::sign(dx);
+                    } else {
+                        pop(player, sound, stage);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void Bubble::pop(Player* player, rt::SoundStage& sound, Stage& stage, usize depth) {
+    if (popped) return;
+    popped = true;
+
+    switch (player->character) {
+        case Player::Character::Bub: stage.award_points_bub(point_value(depth)); break;
+        case Player::Character::Bob: stage.award_points_bob(point_value(depth)); break;
+    }
+
+    launch_enemy(sound, stage);
+
+    stage.remove(this); stage.add(Box<BubblePopParticle>::make(position));
+
+    for (auto obj : stage.objs()) {
+        if (auto other = flat_cast<Bubble>(obj); other and other != this) {
+            if (other->popped) continue;
+
+            auto dx = position.x - other->position.x;
+            auto dy = position.y - other->position.y;
+
+            if (math::abs(dx) < WIDTH_RADIUS * 2 and math::abs(dy) < HEIGHT_RADIUS * 2) {
+                other->pop(player, sound, stage, depth + 1);
             }
         }
     }

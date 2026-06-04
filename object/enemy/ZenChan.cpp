@@ -43,7 +43,7 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
             } else if ((hash % 256) < 14) {
                 for (auto obj : stage.objs()) {
                     if (
-                        flat_cast<Player>(obj) and
+                        flat_cast<Player>(obj) and obj->position.y > position.y and
                         (
                             obj->position.x < position.x and facing == Facing::Right or
                             obj->position.x > position.x and facing == Facing::Left

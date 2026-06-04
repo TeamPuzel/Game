@@ -1,8 +1,9 @@
 #pragma once
 #include <bubble>
+#include "Enemy.hpp"
 
 namespace bubble {
-    class ZenChan final : public Object, public DefaultCodable<ZenChan> {
+    class ZenChan final : public Enemy, public DefaultCodable<ZenChan> {
       public:
         enum class Facing : u8 { Left, Right } facing = Facing::Right;
         u8 jump_lock = 0;
@@ -44,6 +45,10 @@ namespace bubble {
                     | draw::apply_if(facing == Facing::Right, draw::mirror_x()),
                 -8, -8
             );
+        }
+
+        auto bubble_sprite_pos() const -> BubbleSpritePosition override {
+            return { .x = 6, .y = 18 };
         }
 
         void flip() noexcept override {

@@ -30,3 +30,11 @@ void Stage::check_for_game_end() {
         game_end_timer = GAME_END_DELAY;
     }
 }
+
+void Stage::award_points_bub(u32 points) {
+    bub_score += points;
+}
+
+void Stage::award_points_bob(u32 points) {
+    bob_score += points;
+}

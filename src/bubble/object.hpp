@@ -108,17 +108,19 @@ namespace bubble {
     };
 
     template <typename T, typename U> auto flat_cast(U* ptr) noexcept -> T* {
-        if (auto result = dynamic_cast<T*>(ptr)) return result;
+        return dynamic_cast<T*>(ptr);
+        // if (auto result = dynamic_cast<T*>(ptr)) return result;
 
-        std::string_view t = typeid(T).name(), u = typeid(*ptr).name();
-        if (t == u) return (T*) ptr; else return nullptr;
+        // std::string_view t = typeid(T).name(), u = typeid(*ptr).name();
+        // if (t == u) return (T*) ptr; else return nullptr;
     }
 
     template <typename T, typename U> auto flat_cast(U const* ptr) noexcept -> T const* {
-        if (auto result = dynamic_cast<T const*>(ptr)) return result;
+        return dynamic_cast<T const*>(ptr);
+        // if (auto result = dynamic_cast<T const*>(ptr)) return result;
 
-        std::string_view t = typeid(T).name(), u = typeid(*ptr).name();
-        if (t == u) return (T const*) ptr; else return nullptr;
+        // std::string_view t = typeid(T).name(), u = typeid(*ptr).name();
+        // if (t == u) return (T const*) ptr; else return nullptr;
     }
 
     template <typename T> auto isa_cast(std::string_view isa, Object* ptr) noexcept -> T* {

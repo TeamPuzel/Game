@@ -206,14 +206,24 @@ namespace bubble {
             removal_queue.insert(object);
         }
 
-        void force_remove(Object* object) noexcept {
+        void force_remove(Object* object) {
             remove(object);
             apply_removal_queue();
         }
 
-        void add(Box<Object>&& object) noexcept {
-            // TODO: This can throw, but it makes no sense to propagate to the object.
+        void add(Box<Object> object) {
             objects.emplace_back(std::move(object));
+        }
+
+        template <typename T> auto take(T* object) -> Box<T> {
+            auto it = std::ranges::find(objects, object, &Box<Object>::raw);
+
+            if (it != objects.end()) {
+                removal_queue.erase(object);
+                return it->template cast<T>();
+            } else {
+                throw std::logic_error("object not in stage");
+            }
         }
 
         auto objs() {
@@ -231,6 +241,8 @@ namespace bubble {
         virtual void lose_life_bub();
         virtual void lose_life_bob();
         virtual void check_for_game_end();
+        virtual void award_points_bub(u32 points);
+        virtual void award_points_bob(u32 points);
 
         Stage(Io& io, u8 index, Grid<Image> sheet, Box<SoundLibrary> sounds, GameMode mode, bool start_as_editor = false)
             : sheet(std::move(sheet)), sounds(std::move(sounds)), mode(mode), stage_index(index), editor_mode(start_as_editor) {}
@@ -258,7 +270,7 @@ namespace bubble {
             objects.erase(
                 std::remove_if(objects.begin(), objects.end(),
                     [this] (Box<Object>& box) {
-                        return removal_queue.find(box.raw()) != removal_queue.end();
+                        return not box or removal_queue.find(box.raw()) != removal_queue.end();
                     }
                 ),
                 objects.end()
@@ -423,7 +435,9 @@ namespace bubble {
 
                 // We can add more objects during an object update so we can't use a range loop as that
                 // could sometimes invalidate the iterator if the vector has to resize.
-                for (usize i = 0; i < objects.size(); i += 1) objects[i]->update(io, input, sound, *this);
+                for (usize i = 0; i < objects.size(); i += 1) if (objects[i]) {
+                    objects[i]->update(io, input, sound, *this);
+                }
             }
 
             apply_removal_queue();

@@ -1,14 +1,40 @@
 #pragma once
 #include <bubble>
 #include "meta/StartPoint.hpp"
+#include "enemy/Enemy.hpp"
 
 namespace bubble {
+    class Player;
+
+    class BubblePopParticle final : public Object {
+      public:
+        static constexpr u32 TIMER_DELAY = 10;
+
+        u32 timer = TIMER_DELAY;
+
+        BubblePopParticle(point<fixed> position) {
+            this->position = position;
+        }
+
+        void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override {
+            if (timer) timer -= 1; else stage.remove(this);
+        }
+
+        void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
+            target | draw::draw(
+                stage.get_sheet().tile(timer > (TIMER_DELAY / 2) ? 5 : 6, 2),
+                -8, -8
+            );
+        }
+    };
+
     class Bubble final : public Object {
       public:
         enum class LaunchDirection : u8 { Left, Right } launch_direction;
+        usize tick = 0;
         u32 launch_timer = 25;
-        u32 pop_timer = 0;
-        Box<Object> held_object;
+        Box<Enemy> held_enemy;
+        bool popped = false;
 
         explicit Bubble(point<fixed> position, LaunchDirection launch_direction) : launch_direction(launch_direction) {
             this->position = position;
@@ -17,9 +43,15 @@ namespace bubble {
         static constexpr fixed LAUNCH_SPEED = 3;
         static constexpr i32 WIDTH_RADIUS = 7;
         static constexpr i32 HEIGHT_RADIUS = 7;
+        static constexpr u32 BASE_POINT_VALUE = 10;
 
-        auto is_popped() const -> bool {
-            return pop_timer;
+        auto point_value(usize depth) const -> u32 {
+            if (held_enemy) return BASE_POINT_VALUE + held_enemy->point_value(depth); else return BASE_POINT_VALUE;
+        }
+
+        void launch_enemy(rt::SoundStage& sound, Stage& stage) {
+            if (not held_enemy) return;
+
         }
 
         void apply_launch() {
@@ -29,17 +61,28 @@ namespace bubble {
             }
         }
 
+        void pop(Player* player, rt::SoundStage& sound, Stage& stage, usize depth = 0);
+
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
 
         void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
-            auto tile = [&] {
-                if (launch_timer > 15) return stage.get_sheet().tile(1, 2);
-                if (launch_timer > 10) return stage.get_sheet().tile(2, 2);
-                if (launch_timer > 1)  return stage.get_sheet().tile(3, 2);
-                return stage.get_sheet().tile(4, 2);
-            }();
+            if (held_enemy) {
+                auto [tx, ty] = held_enemy->bubble_sprite_pos();
+                target | draw::draw(
+                    stage.get_sheet().tile(tx, ty)
+                        | draw::apply_if(tick / 6 % 2 == 0, draw::mirror_x()),
+                    -8, -8
+                );
+            } else {
+                auto tile = [&] {
+                    if (launch_timer > 15) return stage.get_sheet().tile(1, 2);
+                    if (launch_timer > 10) return stage.get_sheet().tile(2, 2);
+                    if (launch_timer > 1)  return stage.get_sheet().tile(3, 2);
+                    return stage.get_sheet().tile(4, 2);
+                }();
 
-            target | draw::draw(tile, -8, -8);
+                target | draw::draw(tile, -8, -8);
+            }
         }
     };
 
