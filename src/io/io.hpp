@@ -141,11 +141,11 @@ class Io {
     }
 
     auto get_environment(std::string_view name) -> std::optional<std::string> {
-        return perform_get_environment(name.begin());
+        return perform_get_environment(name.data());
     }
 
     void set_environment(std::string_view name, std::optional<std::string_view> value) {
-        perform_set_environment(name.begin(), value);
+        perform_set_environment(name.data(), value);
     }
 
   private:
