@@ -81,28 +81,23 @@ if(NOT HOT_RELOAD)
     target_link_libraries(bubble PRIVATE SDL3::SDL3)
 endif()
 
-foreach(obj_src ${GAME_OBJECT_SOURCES})
-    get_filename_component(obj_name ${obj_src} NAME_WE)
+add_library(dyn MODULE ${GAME_OBJECT_SOURCES})
 
-    add_library(${obj_name} SHARED ${obj_src})
+target_link_libraries(dyn PRIVATE SDL3::SDL3)
+target_include_directories(dyn PRIVATE include lib/stb)
 
-    target_link_libraries(${obj_name} PRIVATE SDL3::SDL3)
-    target_include_directories(${obj_name} PRIVATE include lib/stb)
+set_target_properties(dyn PROPERTIES
+    PREFIX ""
+    SUFFIX ".object"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj"
 
-    # Set output directory for shared objects, also for Windows dll files.
-    set_target_properties(${obj_name} PROPERTIES
-        PREFIX ""
-        SUFFIX ".object"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj"
-
-        # Overrides for esoteric build environments (MSVC).
-        LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/obj"
-        LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/obj"
-        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/obj"
-        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/obj"
-    )
-endforeach()
+    # Overrides for esoteric build environments (MSVC).
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/obj"
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/obj"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/obj"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/obj"
+)
 
 # Resources ------------------------------------------------------------------------------------------------------------
 

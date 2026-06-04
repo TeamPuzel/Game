@@ -6,7 +6,7 @@ namespace bubble {
     class Bubble final : public Object {
       public:
         enum class LaunchDirection : u8 { Left, Right } launch_direction;
-        u32 launch_timer = 30;
+        u32 launch_timer = 25;
         u32 pop_timer = 0;
         Box<Object> held_object;
 
@@ -14,7 +14,7 @@ namespace bubble {
             this->position = position;
         }
 
-        static constexpr i32 LAUNCH_SPEED = 2;
+        static constexpr fixed LAUNCH_SPEED = 3;
         static constexpr i32 WIDTH_RADIUS = 7;
         static constexpr i32 HEIGHT_RADIUS = 7;
 
@@ -32,10 +32,14 @@ namespace bubble {
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
 
         void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
-            target | draw::draw(
-                stage.get_sheet().tile(4, 2),
-                -8, -8
-            );
+            auto tile = [&] {
+                if (launch_timer > 15) return stage.get_sheet().tile(1, 2);
+                if (launch_timer > 10) return stage.get_sheet().tile(2, 2);
+                if (launch_timer > 1)  return stage.get_sheet().tile(3, 2);
+                return stage.get_sheet().tile(4, 2);
+            }();
+
+            target | draw::draw(tile, -8, -8);
         }
     };
 

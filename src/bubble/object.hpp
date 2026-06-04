@@ -121,6 +121,14 @@ namespace bubble {
         if (t == u) return (T const*) ptr; else return nullptr;
     }
 
+    template <typename T> auto isa_cast(std::string_view isa, Object* ptr) noexcept -> T* {
+        if (ptr->isa(isa)) return (T*) ptr; else return nullptr;
+    }
+
+    template <typename T> auto isa_cast(std::string_view isa, Object const* ptr) noexcept -> T const* {
+        if (ptr->isa(isa)) return (T const*) ptr; else return nullptr;
+    }
+
     /// A game object loadable from files and hot-reloadable during gameplay.
     /// Obviously don't attempt rebuilding if the ABI was broken between reloads.
     ///

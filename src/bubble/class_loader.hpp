@@ -29,8 +29,7 @@ namespace bubble::class_loader {
 
         auto& reg = SWAPPED_REGISTRY ? REGISTRY_0 : REGISTRY_1;
 
-        std::stringstream library_path;
-        library_path << "obj/" << classname << ".object";
+        std::string library_path = "obj/dyn.object";
 
         Stub<ObjectRebuilder> rebuilder { nullptr };
         Stub<ObjectSerializer> serializer { nullptr };
@@ -38,18 +37,18 @@ namespace bubble::class_loader {
         Stub<ObjectInitializer> initializer { nullptr };
 
         const auto fill = [&] (Io::DynamicLibrary const& obj) {
-            rebuilder = (decltype(rebuilder)) obj.symbol("__game_object_rebuild");
-            serializer = (decltype(serializer)) obj.symbol("__game_object_serialize");
-            deserializer = (decltype(deserializer)) obj.symbol("__game_object_deserialize");
-            initializer = (decltype(initializer)) obj.symbol("__game_object_initialize");
+            rebuilder    = (decltype(rebuilder)) obj.symbol(std::format("__game_object_rebuild_{}", classname));
+            serializer   = (decltype(serializer)) obj.symbol(std::format("__game_object_serialize_{}", classname));
+            deserializer = (decltype(deserializer)) obj.symbol(std::format("__game_object_deserialize_{}", classname));
+            initializer  = (decltype(initializer)) obj.symbol(std::format("__game_object_initialize_{}", classname));
         };
 
-        if (const auto it = reg.find(library_path.str()); it != reg.end()) {
+        if (const auto it = reg.find(library_path); it != reg.end()) {
             fill(it->second);
         } else {
-            auto obj = io.open_library(library_path.str());
+            auto obj = io.open_library(library_path);
             fill(obj);
-            reg.emplace(library_path.str(), std::move(obj));
+            reg.emplace(library_path, std::move(obj));
         }
 
         return { rebuilder(), serializer(), deserializer(), initializer() };

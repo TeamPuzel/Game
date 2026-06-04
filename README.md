@@ -7,7 +7,7 @@
 - `lib` contains minimal vendor code
 - `cross` contains cross compilation files
 
-Game objects are implemented seperately because they are compiled as shared libraries and live-reloadable at runtime.
+Game objects are implemented seperately because they are a shared library live-reloadable at runtime.
 
 ### Source structure
 

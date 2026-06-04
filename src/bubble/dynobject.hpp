@@ -18,21 +18,17 @@
 // This very elaborate (weird) with member pointers which are actually fat on the MSVC ABI. Oh well. I don't feel like
 // bothering to handle the botched variance in the Microsoft's implementation (C++ is such a well standardized language)
 // The serializer will just be static instead of a member. Whatever. I hate this language.
-#define EXPORT_GAME_OBJECT(CLASSNAME)                                 \
-static_assert(DynamicObject<CLASSNAME>::value);                       \
-extern "C" DLLEXPORT ObjectRebuilder __game_object_rebuild() {        \
-    return (ObjectRebuilder) &CLASSNAME::rebuild;                     \
-}                                                                     \
-extern "C" DLLEXPORT ObjectSerializer __game_object_serialize() {     \
-    return (ObjectSerializer) &CLASSNAME::serialize;                  \
-}                                                                     \
-extern "C" DLLEXPORT ObjectDeserializer __game_object_deserialize() { \
-    return (ObjectDeserializer) &CLASSNAME::deserialize;              \
-}                                                                     \
-extern "C" DLLEXPORT ObjectInitializer __game_object_initialize() {   \
-    return (ObjectInitializer) &CLASSNAME::initialize;                \
+#define EXPORT_GAME_OBJECT(CLASSNAME)                                             \
+static_assert(DynamicObject<CLASSNAME>::value);                                   \
+extern "C" DLLEXPORT ObjectRebuilder __game_object_rebuild_##CLASSNAME() {        \
+    return (ObjectRebuilder) &CLASSNAME::rebuild;                                 \
+    }                                                                             \
+extern "C" DLLEXPORT ObjectSerializer __game_object_serialize_##CLASSNAME() {     \
+    return (ObjectSerializer) &CLASSNAME::serialize;                              \
+    }                                                                             \
+extern "C" DLLEXPORT ObjectDeserializer __game_object_deserialize_##CLASSNAME() { \
+    return (ObjectDeserializer) &CLASSNAME::deserialize;                          \
+    }                                                                             \
+extern "C" DLLEXPORT ObjectInitializer __game_object_initialize_##CLASSNAME() {   \
+    return (ObjectInitializer) &CLASSNAME::initialize;                            \
 }
-#define OBJECT_REBUILD "__game_object_rebuild"
-#define OBJECT_SERIALIZE "__game_object_serialize"
-#define OBJECT_DESERIALIZE "__game_object_deserialize"
-#define OBJECT_INITIALIZE "__game_object_initialize"
