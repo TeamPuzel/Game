@@ -204,7 +204,10 @@ namespace bubble {
                 u32 score_count = reader.u32();
 
                 for (u32 i = 0; i < score_count; i += 1) {
-                    scores.emplace_back(reader.cstr(NAME_LENGTH + 1), reader.u32());
+                    // There is no such thing as a C++ programming language.
+                    auto name = reader.cstr(NAME_LENGTH + 1);
+                    auto score = reader.u32();
+                    scores.emplace_back(name, score);
                 }
             }
 
