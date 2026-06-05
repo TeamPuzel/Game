@@ -185,14 +185,16 @@ namespace io {
         };
 
         template <std::integral T> constexpr auto from_le_bytes(std::array<u8, sizeof(T)> bytes) noexcept -> T {
-            T value = 0;
-            for (usize i = 0; i < sizeof(T); i += 1) value |= T(bytes[i]) << (i * 8);
+            using U = std::make_unsigned_t<T>;
+            U value = 0;
+            for (usize i = 0; i < sizeof(T); i += 1) value |= U(bytes[i]) << (i * 8);
             return value;
         }
 
         template <std::integral T> constexpr auto from_be_bytes(std::array<u8, sizeof(T)> bytes) noexcept -> T {
-            T value = 0;
-            for (usize i = 0; i < sizeof(T); i += 1) value |= T(bytes[i]) << ((sizeof(T) - 1 - i) * 8);
+            using U = std::make_unsigned_t<T>;
+            U value = 0;
+            for (usize i = 0; i < sizeof(T); i += 1) value |= U(bytes[i]) << ((sizeof(T) - 1 - i) * 8);
             return value;
         }
 
