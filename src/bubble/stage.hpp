@@ -927,6 +927,8 @@ namespace bubble {
         }
 
       public:
+        virtual void unsafe_hot_reload_child(Box<Object>& object);
+
         void hot_reload(Io& io) override {
             class_loader::swap_registry();
             for (Box<Object>& object : objects) { // Intentionally mutable for swap
@@ -937,7 +939,7 @@ namespace bubble {
                     remove(object.raw());
                 } else {
                     auto descriptor = class_loader::load(io, object->classname());
-                    auto replacement = descriptor.rebuilder(object.raw());
+                    auto replacement = descriptor.rebuilder(object.raw(), *this);
 
                     replacement->position = object->position;
 

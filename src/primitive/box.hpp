@@ -13,14 +13,12 @@ template <typename T> class Box final {
   public:
     Box() noexcept : inner(nullptr) {}
 
+    using Pointee = T;
+
     template <typename U> friend class Box;
 
     template <typename... Args> static auto make(Args&&...args) -> Box {
         return Box(new T(std::forward<Args>(args)...));
-    }
-
-    static auto dangling() noexcept -> Box {
-        return Box(0x1);
     }
 
     Box(Box const&) = delete;

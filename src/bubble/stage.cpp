@@ -38,3 +38,18 @@ void Stage::award_points_bub(u32 points) {
 void Stage::award_points_bob(u32 points) {
     bob_score += points;
 }
+
+void Stage::unsafe_hot_reload_child(Box<Object>& object) {
+    if (not object) return;
+
+    Io& io = Io::unsafe_get_threadlocal_io();
+
+    if (not object->is_dynobject()) throw std::logic_error("tried reloading a non dynamic child object");
+
+    auto descriptor = class_loader::load(io, object->classname());
+    auto replacement = descriptor.rebuilder(object.raw(), *this);
+
+    replacement->position = object->position;
+
+    std::swap(object, replacement);
+}
