@@ -28,11 +28,11 @@ if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wno-deprecated-declarations")
     add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
 
-    # Reflection.
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdlib++ -nostdinc++ -fno-blocks -freflection -freflection-latest -fexpansion-statements")
-    add_compile_definitions(BUBBLE_REFLECTION_ENABLED)
-
     if(DEFINED CUSTOM_CXX_INCLUDE_DIR AND DEFINED CUSTOM_CXX_LIB_DIR)
+        # Reflection.
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdlib++ -nostdinc++ -fno-blocks -freflection -freflection-latest -fexpansion-statements")
+        add_compile_definitions(BUBBLE_REFLECTION_ENABLED)
+
         set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES "${CUSTOM_CXX_INCLUDE_DIR}")
 
         if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
@@ -96,7 +96,12 @@ file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.mm)
 file(GLOB_RECURSE GAME_OBJECT_SOURCES CONFIGURE_DEPENDS object/*.cpp)
 
 if(NOT HOT_RELOAD)
-    add_executable(bubble WIN32 ${GAME_SOURCES})
+    if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+        add_executable(bubble WIN32 ${GAME_SOURCES} templates/windows/windows_resources.rc)
+    else()
+        add_executable(bubble ${GAME_SOURCES})
+    endif()
+
     target_include_directories(bubble PRIVATE include lib/stb)
     target_link_libraries(bubble PRIVATE SDL3::SDL3)
 endif()
