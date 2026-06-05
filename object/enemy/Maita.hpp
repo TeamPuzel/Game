@@ -3,10 +3,8 @@
 #include "Enemy.hpp"
 
 namespace bubble {
-    class Maita final : public Enemy, public DefaultCodable<Maita> {
+    class Maita final : public CodableObject<Maita, Enemy> {
       public:
-        enum class Character : u8 { Bub, Bob } character = Character::Bub;
-
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override {
 
         }

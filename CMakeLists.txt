@@ -12,7 +12,7 @@ project(Game C CXX)
 # I cross compile to Windows, while for now it still has some shrinking market share, it is
 # purely a target platform, not a serious development environment. This requires the STL and Windows libraries to be
 # present on unix systems which as far as I can tell is easiest to do by just copying them over from Windows.
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
@@ -20,6 +20,21 @@ if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ftrivial-auto-var-init=pattern")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wno-deprecated-declarations")
     add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
+
+    # Reflection.
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -fno-blocks -stdlib=libc++ -freflection -freflection-latest -fexpansion-statements")
+
+    if(DEFINED CUSTOM_CXX_INCLUDE_DIR AND DEFINED CUSTOM_CXX_LIB_DIR)
+        set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES "${CUSTOM_CXX_INCLUDE_DIR}")
+        link_directories("${CUSTOM_CXX_LIB_DIR}")
+
+        if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+            link_libraries(
+                "${CUSTOM_MAC_LIBCXX}"
+                "${CUSTOM_CXX_LIB_DIR}/libunwind.1.0.dylib"
+            )
+        endif()
+    endif()
 else()
     # MSVC flag equivalent nonsense.
 
@@ -53,13 +68,6 @@ endif()
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     # Other operating systems just have development packages, windows requires an extra step.
     set(SDL3_DIR "lib/SDL3-3.2.24/cmake")
-endif()
-
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-    # Can't just link the system library anymore due to ABI breakage in libc++, how cute, isn't C++ just so great.
-    # Technically C++ does not have a stable ABI in the first place so the fact that this is not the default
-    # behavior is obviously a huge mistake, but that is the case for most of the C++ ecosystem.
-    link_libraries(/opt/homebrew/Cellar/llvm/21.1.3/lib/c++/libc++.dylib)
 endif()
 
 # Depencencies ---------------------------------------------------------------------------------------------------------

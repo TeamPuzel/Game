@@ -4,6 +4,16 @@
 
 BUILD_TYPE ?= Release
 
+REFLECTION_LLVM_DIR ?= /Users/teampuzel/OpenSource/clang-p2996/build
+HOMEBREW_LLVM_DIR   ?= /opt/homebrew/Cellar/llvm/21.1.3
+
+COMPILER_FLAGS = \
+	-DCMAKE_C_COMPILER=$(REFLECTION_LLVM_DIR)/bin/clang \
+	-DCMAKE_CXX_COMPILER=$(REFLECTION_LLVM_DIR)/bin/clang++ \
+	-DCMAKE_CXX_FLAGS="-fsanitize=bounds,local-bounds -fsanitize-trap=bounds,local-bounds" \
+	-DCUSTOM_CXX_INCLUDE_DIR=$(REFLECTION_LLVM_DIR)/include/c++/v1 \
+	-DCUSTOM_CXX_LIB_DIR=$(REFLECTION_LLVM_DIR)/lib
+
 all: setup
 
 # Counts the lines of code :)
@@ -23,10 +33,8 @@ clangd-cross:
 
 setup: clangd-build
 	@rm -rf build
-	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
-        -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
-        -DCMAKE_CXX_FLAGS="-fsanitize=bounds,local-bounds -fsanitize-trap=bounds,local-bounds"
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $(COMPILER_FLAGS)
+
 
 build: setup
 	@cd build; ninja
@@ -49,7 +57,7 @@ reload:
 	@rm -rf build/build.ninja
 	@rm -rf build/cmake_install.cmake
 	@rm -rf build/CMakeCache.txt
-	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHOT_RELOAD=ON
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHOT_RELOAD=ON $(COMPILER_FLAGS)
 	@cd build; ninja
 	@pkill -USR1 bubble
 

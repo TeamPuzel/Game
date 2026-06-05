@@ -187,7 +187,6 @@ namespace bubble {
 
             const auto descriptor = class_loader::load(io, classname);
             auto instance = descriptor.initializer(0, 0);
-            instance->classname = classname;
             editor_object_temp = std::move(instance);
         }
 
@@ -867,12 +866,12 @@ namespace bubble {
             }
 
             u32 object_count = 0;
-            for (Box<Object> const& object : objects) if (object->is_dynobject()) object_count += 1;
+            for (Box<Object> const& object : objects) if (object->is_serial()) object_count += 1;
             writer.u32(object_count);
 
-            for (Box<Object> const& object : objects) if (object->is_dynobject()) {
+            for (Box<Object> const& object : objects) if (object->is_serial()) {
                 // Write classname (32 char cstring padded with null terminators)
-                std::string_view name = object->classname;
+                std::string_view name = object->classname();
 
                 for (u32 i = 0; i < 32; i += 1) if (i < name.size()) writer.u8(name[i]); else writer.u8(0);
 
@@ -882,7 +881,7 @@ namespace bubble {
                 std::vector<u8> userdata;
                 BinaryWriter userdata_writer { std::back_inserter(userdata) };
 
-                const auto descriptor = class_loader::load(io, object->classname);
+                const auto descriptor = class_loader::load(io, object->classname());
                 descriptor.serializer(object.raw(), userdata_writer);
 
                 for (u32 i = 0; i < 128; i += 1) {
@@ -920,7 +919,6 @@ namespace bubble {
 
                     const auto descriptor = class_loader::load(io, classname);
                     auto instance = descriptor.deserializer(userdata_reader, x, y);
-                    instance->classname = classname;
                     this->objects.emplace_back(std::move(instance));
                 }
             } else {
@@ -938,11 +936,10 @@ namespace bubble {
                     // This is safe because we manually apply the removal queue afterwards.
                     remove(object.raw());
                 } else {
-                    auto descriptor = class_loader::load(io, object->classname);
+                    auto descriptor = class_loader::load(io, object->classname());
                     auto replacement = descriptor.rebuilder(object.raw());
 
                     replacement->position = object->position;
-                    replacement->classname = object->classname;
 
                     std::swap(object, replacement);
                 }

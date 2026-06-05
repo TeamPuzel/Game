@@ -253,3 +253,5 @@ void Player::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
 }
 
 EXPORT_GAME_OBJECT(Player);
+EXPORT_GAME_OBJECT(Bubble);
+EXPORT_GAME_OBJECT(BubblePopParticle);

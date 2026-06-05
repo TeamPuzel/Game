@@ -3,10 +3,10 @@
 #include "Enemy.hpp"
 
 namespace bubble {
-    class ZenChan final : public Enemy, public DefaultCodable<ZenChan> {
+    class ZenChan final : public CodableObject<ZenChan, Enemy> {
       public:
-        enum class Facing : u8 { Left, Right } facing = Facing::Right;
-        u8 jump_lock = 0;
+        enum class Facing : u8 { Left, Right } [[=serial]] facing = Facing::Right;
+        [[=reload]] u8 jump_lock = 0;
 
         static constexpr fixed FALL_SPEED = 1;
         static constexpr fixed SPEED = 1;
@@ -56,19 +56,6 @@ namespace bubble {
                 case Facing::Left:  facing = Facing::Right; break;
                 case Facing::Right: facing = Facing::Left;  break;
             }
-        }
-
-        static void serialize(Object const* erased, BinaryWriter& writer) {
-            auto self = flat_cast<ZenChan>(erased);
-            writer.u8((u8) self->facing);
-        }
-
-        static auto deserialize(BinaryReader& reader, i32 x, i32 y) -> Box<Object> {
-            auto self = initialize(x, y).cast<ZenChan>();
-
-            self->facing = (Facing) reader.u8();
-
-            return self;
         }
     };
 }

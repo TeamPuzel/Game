@@ -6,11 +6,13 @@
 namespace bubble {
     class Player;
 
-    class BubblePopParticle final : public Object {
+    class BubblePopParticle final : public CodableObject<BubblePopParticle> {
       public:
         static constexpr u32 TIMER_DELAY = 10;
 
-        u32 timer = TIMER_DELAY;
+        [[=reload]] u32 timer = TIMER_DELAY;
+
+        BubblePopParticle() = default;
 
         BubblePopParticle(point<fixed> position) {
             this->position = position;
@@ -28,13 +30,15 @@ namespace bubble {
         }
     };
 
-    class Bubble final : public Object {
+    class Bubble final : public CodableObject<Bubble> {
       public:
         enum class LaunchDirection : u8 { Left, Right } launch_direction;
-        usize tick = 0;
-        u32 launch_timer = 25;
-        Box<Enemy> held_enemy;
-        bool popped = false;
+        [[=reload]] usize tick = 0;
+        [[=reload]] u32 launch_timer = 25;
+        [[=reload]] Box<Enemy> held_enemy;
+        [[=reload]] bool popped = false;
+
+        Bubble() = default;
 
         explicit Bubble(point<fixed> position, LaunchDirection launch_direction) : launch_direction(launch_direction) {
             this->position = position;
@@ -86,7 +90,7 @@ namespace bubble {
         }
     };
 
-    class Player final : public Object, public DefaultCodable<Player> {
+    class Player final : public CodableObject<Player> {
       public:
         enum class Animation {
             None,
@@ -98,8 +102,8 @@ namespace bubble {
 
         Animator<Animation> animator;
 
-        enum class Facing : u8 { Left, Right } facing = Facing::Right;
-        enum class Character : u8 { Bub, Bob } character = Character::Bub;
+        enum class Facing : u8 { Left, Right } [[=serial]] facing = Facing::Right;
+        enum class Character : u8 { Bub, Bob } [[=serial]] character = Character::Bub;
 
         enum class State : u8 {
             Grounded,
@@ -108,14 +112,14 @@ namespace bubble {
             Death
         } state = State::Airborne;
 
-        usize tick = 0;
-        i32 attack_timer = 0;
-        i32 jump_timer = 0;
-        i32 death_timer = 0;
-        i32 invulnerability_timer = 0;
-        point<fixed> air_velocity;
-        bool standing_jump = false;
-        Facing jump_direction = Facing::Right;
+        [[=reload]] usize tick = 0;
+        [[=reload]] i32 attack_timer = 0;
+        [[=reload]] i32 jump_timer = 0;
+        [[=reload]] i32 death_timer = 0;
+        [[=reload]] i32 invulnerability_timer = 0;
+        [[=reload]] point<fixed> air_velocity;
+        [[=reload]] bool standing_jump = false;
+        [[=reload]] Facing jump_direction = Facing::Right;
 
         static constexpr fixed FALL_SPEED = 1;
         static constexpr fixed AIR_SPEED = 1;
@@ -252,21 +256,6 @@ namespace bubble {
                 case Character::Bub: character = Character::Bob; break;
                 case Character::Bob: character = Character::Bub; break;
             }
-        }
-
-        static void serialize(Object const* erased, BinaryWriter& writer) {
-            auto self = flat_cast<Player>(erased);
-            writer.u8((u8) self->facing);
-            writer.u8((u8) self->character);
-        }
-
-        static auto deserialize(BinaryReader& reader, i32 x, i32 y) -> Box<Object> {
-            auto self = initialize(x, y).cast<Player>();
-
-            self->facing = (Facing) reader.u8();
-            self->character = (Character) reader.u8();
-
-            return self;
         }
     };
 }

@@ -90,3 +90,7 @@ template <typename T> class Box final {
         }
     }
 };
+
+template <typename To, typename From> auto box_cast(Box<From>& box) -> Box<To> {
+    return box.template cast<To>();
+}

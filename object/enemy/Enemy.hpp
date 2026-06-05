@@ -6,8 +6,10 @@ namespace bubble {
       public:
         struct BubbleSpritePosition final { i32 x, y; };
 
+        /// Enemies need a sprite to display when in a bubble.
         virtual auto bubble_sprite_pos() const -> BubbleSpritePosition = 0;
 
+        /// Enemies need a point value, often scaled by recursion depth when popping multiple bubbles.
         virtual auto point_value(usize depth) const -> u32 {
             switch (depth) {
                 case 0:  return 1000;

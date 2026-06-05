@@ -2,10 +2,10 @@
 #include <bubble>
 
 namespace bubble {
-    class StartPoint final : public Object, public DefaultCodable<StartPoint> {
+    class StartPoint final : public CodableObject<StartPoint> {
       public:
-        enum class Facing : u8 { Left, Right } facing = Facing::Right;
-        enum class Character : u8 { Bub, Bob } character = Character::Bub;
+        enum class Facing : u8 { Left, Right } [[=serial]] facing = Facing::Right;
+        enum class Character : u8 { Bub, Bob } [[=serial]] character = Character::Bub;
 
         auto facing_str() const -> std::string_view {
             switch (facing) {
@@ -56,21 +56,6 @@ namespace bubble {
                 case Character::Bub: character = Character::Bob; break;
                 case Character::Bob: character = Character::Bub; break;
             }
-        }
-
-        static void serialize(Object const* erased, BinaryWriter& writer) {
-            auto self = flat_cast<StartPoint>(erased);
-            writer.u8((u8) self->facing);
-            writer.u8((u8) self->character);
-        }
-
-        static auto deserialize(BinaryReader& reader, i32 x, i32 y) -> Box<Object> {
-            auto self = initialize(x, y).cast<StartPoint>();
-
-            self->facing = (Facing) reader.u8();
-            self->character = (Character) reader.u8();
-
-            return self;
         }
     };
 }

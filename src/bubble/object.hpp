@@ -8,6 +8,7 @@
 #include <io>
 #include <rt>
 #include <font>
+#include <meta>
 
 namespace bubble {
     using draw::Image;
@@ -25,28 +26,14 @@ namespace bubble {
     class Object {
         friend class Stage;
 
-        /// The class name is used to determine the provenance of a dynamic object class.
-        /// Effectively it relates it to a dynamic library name.
-        ///
-        /// This is derived during the deserialization process. Classes constructed otherwise will
-        /// have an empty classname which makes their provenance uncertain. For this reason
-        /// all unknown objects are erased on reload unless they manually assume a name which is error prone.
-        std::string classname;
-
-        auto is_dynobject() const -> bool {
-            return not classname.empty();
-        }
-
       protected:
-        /// Assumes a classname. Assume the wrong classname and a reload is likely to end in undefined behavior.
-        /// Not having one is fine but the object will not be reconstructed on a hot reload.
-        /// Unfortunately until C++26 it will be impossible to automate this process.
-        /// The good news is that C++26 has reflection and it will automate this process :D
-        ///
-        /// If a classname is already present it does not override it.
-        void assume_classname(char const* new_classname) noexcept {
-            if (not classname.empty()) classname = new_classname;
+        virtual auto is_dynobject() const -> bool { return false; }
+
+        virtual auto classname() const -> std::string_view {
+            throw std::logic_error("only dynamic objects have classnames");
         }
+
+        virtual auto is_serial() const -> bool { return false; }
 
       public:
         // TODO: Use generic math::Vector<fixed, 2> matrix type once it's adjusted to allow non-float element types.
@@ -61,7 +48,7 @@ namespace bubble {
         virtual ~Object() noexcept {}
 
         auto isa(std::string_view name) const noexcept -> bool {
-            return classname == name;
+            return classname() == name;
         }
 
         void wrap_position() noexcept {
@@ -162,15 +149,120 @@ namespace bubble {
     //     { &Self::deserialize } -> std::same_as<ObjectDeserializer>;
     // };
 
-    /// Provides default implementations of the dynamic object interface.
-    /// It is advised to perform a super call when using this so that it can reconstruc the object base.
-    ///
-    /// TODO: This is stupid, just put it in the Object supertype and use newer C++ deducing this.
-    ///       Silly language though, having no class ("static") inheritance.
-    template <typename Self> struct DefaultCodable {
+    struct serial_t {
+        constexpr bool operator<=>(serial_t const&) const = default;
+    };
+    struct reload_t {
+        constexpr bool operator<=>(reload_t const&) const = default;
+    };
+
+    /// Annotates a property for serialization and hot reloading by Codable.
+    constexpr serial_t serial;
+    /// Annotates a property for hot reloading by Codable.
+    constexpr reload_t reload;
+
+    template <const usize N> requires (N > 0) struct meta_info_array {
+        std::meta::info data[N];
+        constexpr std::meta::info const* begin() const { return data; }
+        constexpr std::meta::info const* end() const { return data + N; }
+    };
+
+    template <typename T> consteval auto has_reflected_members() {
+        return std::meta::nonstatic_data_members_of(^^T).size() > 0;
+    }
+
+    template <typename T> consteval auto reflected_members() {
+        constexpr auto size = std::meta::nonstatic_data_members_of(^^T).size();
+        meta_info_array<size> arr;
+        auto vec = std::meta::nonstatic_data_members_of(^^T);
+        for (usize i = 0; i < size; i += 1) arr.data[i] = vec[i];
+        return arr;
+    }
+
+    template <typename T> constexpr void write_reflected_member(BinaryWriter& writer, T const& value) {
+        using Self = std::remove_cvref_t<T>;
+
+        if constexpr (std::is_enum_v<Self>) {
+            using IntType = std::underlying_type_t<Self>;
+            writer.template write<IntType>(static_cast<IntType>(value));
+        } else if constexpr (std::integral<Self>) {
+            writer.template write<Self>(value);
+        } else if constexpr (std::same_as<Self, bool>) {
+            writer.boolean(value);
+        } else if constexpr (std::same_as<Self, fixed>) {
+            writer.u32(std::bit_cast<u32>(value));
+        } else if constexpr (std::same_as<Self, point<fixed>>) {
+            write_reflected_member(writer, value.x);
+            write_reflected_member(writer, value.y);
+        } else if constexpr (std::same_as<Self, f32>) {
+            writer.f32(value);
+        } else if constexpr (std::same_as<Self, f64>) {
+            writer.f64(value);
+        } else {
+            static_assert(sizeof(Self) == 0, "unsupported serialization type");
+        }
+    }
+
+    template <typename T> constexpr void read_reflected_member(BinaryReader& reader, T& value) {
+        using Self = std::remove_reference_t<T>;
+
+        if constexpr (std::is_enum_v<Self>) {
+            using IntType = std::underlying_type_t<Self>;
+            value = static_cast<Self>(reader.template read<IntType>());
+        } else if constexpr (std::integral<Self>) {
+            value = reader.template read<Self>();
+        } else if constexpr (std::same_as<Self, bool>) {
+            value = reader.boolean();
+        } else if constexpr (std::same_as<Self, fixed>) {
+            value = std::bit_cast<Self>(reader.u32());
+        } else if constexpr (std::same_as<Self, point<fixed>>) {
+            read_reflected_member(reader, value.x);
+            read_reflected_member(reader, value.y);
+        } else if constexpr (std::floating_point<Self>) {
+            value = reader.template read<Self>();
+        } else {
+            static_assert(sizeof(Self) == 0, "unsupported serialization type");
+        }
+    }
+
+    /// Provides default implementations of the dynamic object serial interface using reflection.
+    /// Shadowing with custom implementations is possible but preferably avoided.
+    template <typename Self, typename Base = Object>
+        requires std::is_base_of_v<Object, Base>
+    class CodableObject : public Base {
+      public:
+        auto is_dynobject() const -> bool final override { return true; }
+
+        auto classname() const -> std::string_view final override { return std::meta::identifier_of(^^Self); }
+
+        /// By default an object is serial if it has any serialized properties.
+        /// An object with no serialized properties of its own can still opt in by being annotated as serial itself.
+        auto is_serial() const -> bool override {
+            constexpr auto annotation = std::meta::annotation_of_type<serial_t>(^^Self);
+            if constexpr (annotation) return true;
+
+            if constexpr (has_reflected_members<Self>()) template for (constexpr auto member : reflected_members<Self>()) {
+                constexpr auto annotation = std::meta::annotation_of_type<serial_t>(member);
+                if constexpr (annotation) return true;
+            }
+
+            return false;
+        }
+
         static auto rebuild(Object const* existing) -> Box<Object> {
             auto ret = Box<Self>::make();
             ret->position = existing->position;
+
+            auto self = static_cast<Self const*>(existing);
+
+            if (self) {
+                if constexpr (has_reflected_members<Self>()) template for (constexpr auto member : reflected_members<Self>()) {
+                    constexpr auto serial = std::meta::annotation_of_type<serial_t>(member);
+                    constexpr auto reload = std::meta::annotation_of_type<reload_t>(member);
+                    if constexpr (serial or reload) ret.raw()->[:member:] = self->[:member:];
+                }
+            }
+
             return ret;
         }
 
@@ -180,12 +272,27 @@ namespace bubble {
             return ret;
         }
 
-        static auto deserialize(BinaryReader& reader, i32 x, i32 y) -> Box<Object> {
-            return initialize(x, y);
+        static void serialize(Object const* erased, BinaryWriter& writer) {
+            auto self = static_cast<Self const*>(erased);
+
+            if (not self->is_serial()) throw std::logic_error("attempted to serialize a non serial object");
+
+            if constexpr (has_reflected_members<Self>()) template for (constexpr auto member : reflected_members<Self>()) {
+                constexpr auto annotation = std::meta::annotation_of_type<serial_t>(member);
+                if constexpr (annotation) write_reflected_member(writer, self->[:member:]);
+            }
         }
 
-        static void serialize(Object const* self, BinaryWriter& writer) {
+        static auto deserialize(BinaryReader& reader, i32 x, i32 y) -> Box<Object> {
+            auto base_box = initialize(x, y);
+            auto self = box_cast<Self>(base_box);
 
+            if constexpr (has_reflected_members<Self>()) template for (constexpr auto member : reflected_members<Self>()) {
+                constexpr auto annotation = std::meta::annotation_of_type<serial_t>(member);
+                if constexpr (annotation) read_reflected_member(reader, self.raw()->[:member:]);
+            }
+
+            return self;
         }
     };
 }
