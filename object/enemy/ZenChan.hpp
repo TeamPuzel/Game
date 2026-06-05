@@ -5,8 +5,8 @@
 namespace bubble {
     class ZenChan final : public CodableObject<ZenChan, Enemy> {
       public:
-        enum class Facing : u8 { Left, Right } [[=serial]] facing = Facing::Right;
-        [[=reload]] u8 jump_lock = 0;
+        enum class Facing : u8 { Left, Right } SERIAL facing = Facing::Right;
+        RELOAD u8 jump_lock = 0;
 
         static constexpr fixed FALL_SPEED = 1;
         static constexpr fixed SPEED = 1;
@@ -19,9 +19,9 @@ namespace bubble {
             Airborne,
             Jumping,
             Leaping,
-        } state = State::Airborne;
+        } RELOAD state = State::Airborne;
 
-        usize tick = 0;
+        RELOAD usize tick = 0;
 
         auto facing_direction() const -> SensorDirection {
             switch (facing) {
@@ -56,6 +56,12 @@ namespace bubble {
                 case Facing::Left:  facing = Facing::Right; break;
                 case Facing::Right: facing = Facing::Left;  break;
             }
+        }
+    };
+
+    template <> struct FallbackCoder<ZenChan> {
+        static void deserialize(Box<ZenChan>& self, BinaryReader& reader) {
+            self->facing = (ZenChan::Facing) reader.u8();
         }
     };
 }

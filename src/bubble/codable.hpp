@@ -2,6 +2,49 @@
 #include "stage.hpp"
 
 namespace bubble {
+    namespace detail {
+        /// C++23 fallback for class names, which are required for the isa cast.
+        template <typename T> consteval auto extract_classname() -> std::string_view {
+#ifdef _MSC_VER
+            std::string_view func = __FUNCSIG__; // "... extract_classname<class bubble::Player>(void)"
+            usize first = func.find_first_of('<') + 1;
+            usize last = func.find_last_of('>');
+            std::string_view type = func.substr(first, last - first);
+#else
+            std::string_view func = __PRETTY_FUNCTION__; // "... extract_classname() [with T = bubble::Player]"
+            usize first = func.find_first_of('=') + 2;
+            usize last = func.find_last_of(']');
+            std::string_view type = func.substr(first, last - first);
+#endif
+            // Strip namespace.
+            usize colon = type.find_last_of(':');
+            if (colon != std::string_view::npos) return type.substr(colon + 1);
+
+            // Strip struct/class tags if present ("class Player" -> "Player")
+            usize space = type.find_last_of(' ');
+            if (space != std::string_view::npos) return type.substr(space + 1);
+
+            return type;
+        }
+    }
+
+    /// Specialize this template to provide fallback deserialization when C++26 reflection is not available.
+    template <typename Self> struct FallbackCoder {
+        static void deserialize(Box<Self>& self, BinaryReader& reader) {
+            throw std::logic_error(
+                std::format("fallback coder not implemented for {}", detail::extract_classname<Self>())
+            );
+        }
+    };
+}
+
+#ifdef BUBBLE_REFLECTION_ENABLED
+#include <meta>
+
+#define SERIAL [[=serial]]
+#define RELOAD [[=reload]]
+
+namespace bubble {
     struct serial_t {
         constexpr bool operator<=>(serial_t const&) const = default;
     };
@@ -188,5 +231,44 @@ namespace bubble {
     };
 }
 
-#define SERIAL [[=serial]]
-#define RELOAD [[=reload]]
+#else
+
+#define SERIAL
+#define RELOAD
+
+namespace bubble {
+    /// Provides bare minimum implementations of the dynamic object serial interface required for production
+    /// builds without reflection, but support for hot reloading and saving files is not available.
+    template <typename Self, typename Base = Object>
+        requires std::is_base_of_v<Object, Base>
+    class CodableObject : public Base {
+      public:
+        auto is_dynobject() const -> bool final override { return true; }
+
+        auto classname() const -> std::string_view final override { return detail::extract_classname<Self>(); }
+
+        auto is_serial() const -> bool override { return false; }
+
+        static auto rebuild(Object* existing, Stage& stage) -> Box<Object> {
+            throw std::logic_error("rebuilding not available in this engine build");
+        }
+
+        static auto initialize(i32 x, i32 y) -> Box<Object> {
+            auto ret = Box<Self>::make();
+            ret->position = { x, y };
+            return ret;
+        }
+
+        static void serialize(Object const* erased, BinaryWriter& writer) {
+            throw std::logic_error("serialization not available in this engine build");
+        }
+
+        static auto deserialize(BinaryReader& reader, i32 x, i32 y) -> Box<Object> {
+            auto box = initialize(x, y).template cast<Self>();
+            FallbackCoder<Self>::deserialize(box, reader);
+            return box;
+        }
+    };
+}
+
+#endif

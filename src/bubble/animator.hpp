@@ -5,6 +5,7 @@
 #pragma once
 #include <primitive>
 #include <type_traits>
+#include "codable.hpp"
 
 namespace bubble {
     /// A simple animation system which scrolls through and loops in a range.
@@ -13,18 +14,18 @@ namespace bubble {
     /// accurately recreate the behavior of animations from the classic sonic games.
     template <typename T, const T DEFAULT = T(0)> class Animator final {
         static_assert(std::is_enum<T>::value);
-        T current { DEFAULT };
+        SERIAL T current { DEFAULT };
 
         /// The current frame of the animation.
-        u32 frame { 0 };
+        SERIAL u32 frame { 0 };
         /// A counter counting down frames.
-        u32 counter { 0 };
+        SERIAL u32 counter { 0 };
         /// How many frames are in this animation.
-        u32 count { 1 };
+        SERIAL u32 count { 1 };
         /// The frame the loop jumps back to.
-        u32 loop { 0 };
+        SERIAL u32 loop { 0 };
         /// How many extra frames does it take to move on to the next frame.
-        u32 speed { 0 };
+        SERIAL u32 speed { 0 };
 
       public:
         constexpr Animator() noexcept {}

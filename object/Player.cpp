@@ -11,6 +11,8 @@ void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
     if (stage.solid_at(this, -(WIDTH_RADIUS + 1), 0)) position.x += launch_timer ? 2 : 1;
     if (stage.solid_at(this,  (WIDTH_RADIUS + 1), 0)) position.x -= launch_timer ? 2 : 1;
 
+    // if (position.x == 0 and not held_enemy) return pop(sound, stage);
+
     if (launch_timer) {
         apply_launch();
 
@@ -100,6 +102,14 @@ void Bubble::pop(Player* player, rt::SoundStage& sound, Stage& stage, usize dept
             }
         }
     }
+}
+
+void Bubble::pop(rt::SoundStage& sound, Stage& stage) {
+    if (popped) return;
+    popped = true;
+
+    stage.add(std::move(held_enemy))->provoke(this);
+    stage.remove(this); stage.add(Box<BubblePopParticle>::make(position));
 }
 
 void Player::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {

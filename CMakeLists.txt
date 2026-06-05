@@ -12,17 +12,25 @@ project(Game C CXX)
 # I cross compile to Windows, while for now it still has some shrinking market share, it is
 # purely a target platform, not a serious development environment. This requires the STL and Windows libraries to be
 # present on unix systems which as far as I can tell is easiest to do by just copying them over from Windows.
-set(CMAKE_CXX_STANDARD 26)
+#
+# The MSVC build conditionally avoids compiling everything guarded by BUBBLE_REFLECTION_ENABLED.
+# That is because the development setup requires clang-p2996 to use C++26 reflection for automatic
+# derivation of `serialize` and `rebuild` which are used for saving files through the stage editor
+# and hot reloading of game objects at runtime respectively. The MSVC build is usable but not intended for development.
+
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -Wno-unused -Wunused-value -Wpedantic -Wno-logical-op-parentheses -Wno-c++26-extensions -Wno-pre-c++26-compat -Wno-tautological-compare")
+    set(CMAKE_CXX_STANDARD 26)
+
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -Wno-unused -Wunused-value -Wpedantic -Wno-logical-op-parentheses -Wno-pre-c++26-compat -Wno-tautological-compare")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ftrivial-auto-var-init=pattern")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wno-deprecated-declarations")
     add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
 
     # Reflection.
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -fno-blocks -stdlib=libc++ -freflection -freflection-latest -fexpansion-statements")
+    add_compile_definitions(BUBBLE_REFLECTION_ENABLED)
 
     if(DEFINED CUSTOM_CXX_INCLUDE_DIR AND DEFINED CUSTOM_CXX_LIB_DIR)
         set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES "${CUSTOM_CXX_INCLUDE_DIR}")
@@ -36,9 +44,10 @@ if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
         endif()
     endif()
 else()
+    set(CMAKE_CXX_STANDARD 23)
     # MSVC flag equivalent nonsense.
 
-    # /W4 is the practical equivalent of -Wall. (MSVC's actual /Wall is extremely noisy).
+    # /W4 is the practical equivalent of -Wall.
     # /Zi generates debugging information (like -g). (UPDATE: needs Z7 or the dumb thing will race condition and die).
     # /permissive- enforces strict C++ standard conformance (like -Wpedantic).
     # /wd4100 /wd4101 /wd4189 disable specific "unused" warnings.

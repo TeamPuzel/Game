@@ -129,10 +129,18 @@ namespace bubble {
         });
 
       public:
-        /// Loading a class can take a while so it is might be useful to cache them ahead of time.
+        /// Loading a class can take a while so it might be useful to cache them ahead of time.
+        /// This task also performs a sanity assertion that all objects in the registry have a valid classname.
         static rt::DetachedTask preload_object_classes(Io& io) {
             co_await rt::enqueue();
-            for (auto classname : object_registry) class_loader::load(io, classname);
+
+            for (auto classname : object_registry) {
+                auto descriptor = class_loader::load(io, classname);
+                auto test_instance = descriptor.initializer(0, 0);
+                if (not test_instance->isa(classname)) throw std::runtime_error(
+                    std::format("mismatched classname, expected: {} found: {}", classname, test_instance->classname())
+                );
+            }
         }
 
         auto tile(i32 x, i32 y) -> Tile& { return tiles.at(x + y * WIDTH); }
@@ -210,8 +218,9 @@ namespace bubble {
             apply_removal_queue();
         }
 
-        void add(Box<Object> object) {
+        template <typename T> auto add(Box<T> object) -> T* {
             objects.emplace_back(std::move(object));
+            return (T*) objects.back().raw();
         }
 
         template <typename T> auto take(T* object) -> Box<T> {
@@ -919,6 +928,7 @@ namespace bubble {
 
                     const auto descriptor = class_loader::load(io, classname);
                     auto instance = descriptor.deserializer(userdata_reader, x, y);
+
                     this->objects.emplace_back(std::move(instance));
                 }
             } else {

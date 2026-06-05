@@ -4,8 +4,8 @@
 namespace bubble {
     class StartPoint final : public CodableObject<StartPoint> {
       public:
-        enum class Facing : u8 { Left, Right } [[=serial]] facing = Facing::Right;
-        enum class Character : u8 { Bub, Bob } [[=serial]] character = Character::Bub;
+        enum class Facing : u8 { Left, Right } SERIAL facing = Facing::Right;
+        enum class Character : u8 { Bub, Bob } SERIAL character = Character::Bub;
 
         auto facing_str() const -> std::string_view {
             switch (facing) {
@@ -56,6 +56,13 @@ namespace bubble {
                 case Character::Bub: character = Character::Bob; break;
                 case Character::Bob: character = Character::Bub; break;
             }
+        }
+    };
+
+    template <> struct FallbackCoder<StartPoint> {
+        static void deserialize(Box<StartPoint>& self, BinaryReader& reader) {
+            self->facing = (StartPoint::Facing) reader.u8();
+            self->character = (StartPoint::Character) reader.u8();
         }
     };
 }

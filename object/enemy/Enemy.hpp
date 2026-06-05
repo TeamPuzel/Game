@@ -21,5 +21,7 @@ namespace bubble {
                 default: return 64000;
             }
         }
+
+        virtual void provoke(Object* sender) {}
     };
 }

@@ -8,7 +8,6 @@
 #include <io>
 #include <rt>
 #include <font>
-#include <meta>
 
 namespace bubble {
     using draw::Image;
@@ -91,18 +90,16 @@ namespace bubble {
         virtual void alternate() noexcept {}
     };
 
-    template <typename T, typename U> auto flat_cast(U* ptr) noexcept -> T* {
+    template <typename T, typename U> [[deprecated]] auto flat_cast(U* ptr) noexcept -> T* {
         return dynamic_cast<T*>(ptr);
         // if (auto result = dynamic_cast<T*>(ptr)) return result;
-
         // std::string_view t = typeid(T).name(), u = typeid(*ptr).name();
         // if (t == u) return (T*) ptr; else return nullptr;
     }
 
-    template <typename T, typename U> auto flat_cast(U const* ptr) noexcept -> T const* {
+    template <typename T, typename U> [[deprecated]] auto flat_cast(U const* ptr) noexcept -> T const* {
         return dynamic_cast<T const*>(ptr);
         // if (auto result = dynamic_cast<T const*>(ptr)) return result;
-
         // std::string_view t = typeid(T).name(), u = typeid(*ptr).name();
         // if (t == u) return (T const*) ptr; else return nullptr;
     }

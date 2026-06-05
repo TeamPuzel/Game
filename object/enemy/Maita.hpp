@@ -17,4 +17,10 @@ namespace bubble {
             return { .x = 6, .y = 19 };
         }
     };
+
+    template <> struct FallbackCoder<Maita> {
+        static void deserialize(Box<Maita>& self, BinaryReader& reader) {
+
+        }
+    };
 }
