@@ -34,7 +34,7 @@ class SdlIo final : public Io {
       public:
         Error() {}
 
-        const char * what() const noexcept override {
+        char const* what() const noexcept override {
             return reason.c_str();
         }
     };
@@ -70,7 +70,7 @@ class SdlIo final : public Io {
     }
 
     void perform_write_file(std::string_view path, std::span<u8> data) override {
-        SDL_SaveFile(cstr(path), data.data(), data.size());
+        if (not SDL_SaveFile(cstr(path), data.data(), data.size())) throw Error();
     }
 
     /// A dynamic library loader in terms of SDL3.
