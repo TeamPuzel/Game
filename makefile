@@ -16,7 +16,7 @@ COMPILER_FLAGS = \
 
 all: bundle
 
-build/build.ninja:
+build/build.ninja: CMakeLists.txt
 	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $(COMPILER_FLAGS)
 
 # Counts the lines of code :)

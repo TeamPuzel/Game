@@ -224,7 +224,7 @@ namespace io {
     /// It reads data out by individual bytes avoiding alignment issues and arranges
     /// these bytes according to the desired endianness.
     template <std::ranges::input_range I, const endian::Endian INPUT_ENDIAN = endian::Endian::Big>
-    requires std::same_as<std::ranges::range_value_t<I>, u8>
+    requires std::same_as<std::ranges::range_value_t<I>, u8> and std::ranges::borrowed_range<I>
     class BinaryReader final {
         using InputIterator = decltype(std::ranges::begin(std::declval<I>()));
 
@@ -234,7 +234,7 @@ namespace io {
       public:
         static constexpr bool NOEXCEPT_READABLE = noexcept(*std::declval<InputIterator>()++);
 
-        constexpr BinaryReader(I input [[clang::lifetimebound]])
+        constexpr BinaryReader(I input)
             : input(std::ranges::begin(input)), end(std::ranges::end(input)) {}
 
         // template <typename R> auto read() noexcept(noexcept(R::read(*this))) -> R {
