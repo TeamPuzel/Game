@@ -22,6 +22,7 @@
 #include <condition_variable>
 #include <stdexcept>
 #include <exception>
+#include <filesystem>
 #include <SDL3/SDL.h>
 
 /// An implemenation of Io purely in terms of SDL3. This is very convenient because we don't need
@@ -52,24 +53,31 @@ class SdlIo final : public Io {
     }
 
   private:
-    auto perform_read_file(char const* path) -> std::vector<u8> override {
+    /// Terminate strings because SDL is kind of sad.
+    struct cstr final {
+        std::string str;
+        explicit cstr(std::string_view str) : str(str) {}
+        operator char const* () { return str.c_str(); }
+    };
+
+    auto perform_read_file(std::string_view path) -> std::vector<u8> override {
         usize count;
-        const auto data = (u8*) SDL_LoadFile(path, &count);
+        const auto data = (u8*) SDL_LoadFile(cstr(path), &count);
         if (not data) throw Error();
         auto ret = std::vector(data, data + count);
         SDL_free(data);
         return ret;
     }
 
-    void perform_write_file(char const* path, std::span<u8> data) override {
-        SDL_SaveFile(path, data.data(), data.size());
+    void perform_write_file(std::string_view path, std::span<u8> data) override {
+        SDL_SaveFile(cstr(path), data.data(), data.size());
     }
 
     /// A dynamic library loader in terms of SDL3.
     /// It offers little control but it happens to make the sensible choice of RTLD_NOW | RTLD_LOCAL which is
     /// exactly what we want and I will assume the semantics are preserved on other platforms or this would be a sad API.
-    auto perform_open_library(char const* path) -> void* override {
-        auto ret = SDL_LoadObject(path);
+    auto perform_open_library(std::string_view path) -> void* override {
+        auto ret = SDL_LoadObject(cstr(path));
         if (not ret) throw Error();
         return ret;
     }
@@ -78,18 +86,18 @@ class SdlIo final : public Io {
         SDL_UnloadObject((SDL_SharedObject*) library);
     }
 
-    auto perform_load_symbol(void* library, char const* name) -> void* override {
-        auto ret = SDL_LoadFunction((SDL_SharedObject*) library, name);
+    auto perform_load_symbol(void* library, std::string_view name) -> void* override {
+        auto ret = SDL_LoadFunction((SDL_SharedObject*) library, cstr(name));
         if (not ret) throw Error();
         return (void*) ret;
     }
 
-    auto perform_read_wavefile(char const* path, u32 frequency) -> std::vector<f32> override {
+    auto perform_read_wavefile(std::string_view path, u32 frequency) -> std::vector<f32> override {
         SDL_AudioSpec src_spec;
         u8* src_data = nullptr;
         u32 src_count = 0;
 
-        if (not SDL_LoadWAV(path, &src_spec, &src_data, &src_count)) throw Error();
+        if (not SDL_LoadWAV(cstr(path), &src_spec, &src_data, &src_count)) throw Error();
 
         ScopeExit scope_exit_src = [=] { SDL_free(src_data); };
 
@@ -130,20 +138,24 @@ class SdlIo final : public Io {
     // Alternatively SDL does have an audio library, but due to the stupid way SDL uses trampolines for
     // everything dead code elimination doesn't work on it, and it's generally used as a massive dynamic library anyway.
     // I do not wish to bother with fixing static linkage or adding another massive library just to use one function.
-    auto perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> override;
+    auto perform_read_oggfile(std::string_view path, u32 frequency) -> std::vector<f32> override;
 
-    auto perform_get_environment(char const* name) -> std::optional<std::string> override {
-        auto result = SDL_GetEnvironmentVariable(SDL_GetEnvironment(), name);
+    auto perform_get_environment(std::string_view name) -> std::optional<std::string> override {
+        auto result = SDL_GetEnvironmentVariable(SDL_GetEnvironment(), cstr(name));
         if (result) return std::string(result); else return std::nullopt;
     }
 
-    void perform_set_environment(char const* name, std::optional<std::string_view> value) override {
+    void perform_set_environment(std::string_view name, std::optional<std::string_view> value) override {
         if (value) {
             std::string null_terminated(*value);
-            SDL_SetEnvironmentVariable(SDL_GetEnvironment(), name, null_terminated.c_str(), true);
+            SDL_SetEnvironmentVariable(SDL_GetEnvironment(), cstr(name), null_terminated.c_str(), true);
         } else {
-            SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), name);
+            SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), cstr(name));
         }
+    }
+
+    auto perform_get_prefix_path(std::string_view organization, std::string_view app_name) -> std::string override {
+        return SDL_GetPrefPath(cstr(organization), cstr(app_name));
     }
 
   public:
@@ -1056,6 +1068,10 @@ namespace rt {
                 SDL_GetError(),
             };
         }
+
+        auto basePath = SDL_GetBasePath();
+        if (basePath) std::filesystem::current_path(basePath);
+
 
         auto window = SDL_CreateWindow(
             title, width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY

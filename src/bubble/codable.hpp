@@ -1,3 +1,5 @@
+// A simple game object serialization system using C++26 reflection.
+// There is a fallback coder to specialize for C++23 support.
 #pragma once
 #include "stage.hpp"
 
@@ -129,23 +131,23 @@ namespace bubble {
       public:
         auto is_dynobject() const -> bool final override { return true; }
 
-        auto classname() const -> std::string_view final override { return std::meta::identifier_of(^^Self); }
+        auto classname() const -> std::string_view final override { return identifier_of(^^Self); }
 
         /// By default an object is serial if it has any serialized properties.
         /// An object with no serialized properties of its own can still opt in by being annotated as serial itself.
         auto is_serial() const -> bool override {
-            constexpr auto annotation = std::meta::annotation_of_type<serial_t>(^^Self);
+            constexpr auto annotation = annotation_of_type<serial_t>(^^Self);
             if constexpr (annotation) return true;
 
             if constexpr (not std::is_same_v<Base, Object>) {
-                if constexpr(has_reflected_members<Base>()) template for (constexpr auto member : reflected_members<Base>()) {
-                    constexpr auto annotation = std::meta::annotation_of_type<serial_t>(member);
+                if constexpr (has_reflected_members<Base>()) template for (constexpr auto member : reflected_members<Base>()) {
+                    constexpr auto annotation = annotation_of_type<serial_t>(member);
                     if constexpr (annotation) return true;
                 }
             }
 
-            if constexpr(has_reflected_members<Self>()) template for (constexpr auto member : reflected_members<Self>()) {
-                constexpr auto annotation = std::meta::annotation_of_type<serial_t>(member);
+            if constexpr (has_reflected_members<Self>()) template for (constexpr auto member : reflected_members<Self>()) {
+                constexpr auto annotation = annotation_of_type<serial_t>(member);
                 if constexpr (annotation) return true;
             }
             return false;
@@ -159,39 +161,39 @@ namespace bubble {
 
             if (self) {
                 if constexpr (not std::is_same_v<Base, Object>) {
-                    if constexpr(has_reflected_members<Base>()) template for (constexpr auto member : reflected_members<Base>()) {
-                        constexpr auto serial = std::meta::annotation_of_type<serial_t>(member);
-                        constexpr auto reload = std::meta::annotation_of_type<reload_t>(member);
+                    if constexpr (has_reflected_members<Base>()) template for (constexpr auto member : reflected_members<Base>()) {
+                        constexpr auto serial = annotation_of_type<serial_t>(member);
+                        constexpr auto reload = annotation_of_type<reload_t>(member);
 
                         if constexpr (serial or reload) {
-                            if constexpr (std::meta::is_convertible_type(std::meta::type_of(member), ^^Box<Object>)) {
+                            if constexpr (is_convertible_type(type_of(member), ^^Box<Object>)) {
                                 if (self->[:member:]) {
                                     Box<Object> erased = std::move(self->[:member:]);
                                     stage.unsafe_hot_reload_child(erased);
-                                    using Dest = [:std::meta::type_of(member):]::Pointee;
+                                    using Dest = [:type_of(member):]::Pointee;
                                     ret.raw()->[:member:] = erased.template cast<Dest>();
                                 }
                             } else {
-                                ret.raw()->[:member:] = self->[:member:];
+                                ret.raw()->[:member:] = std::move(self->[:member:]);
                             }
                         }
                     }
                 }
 
                 if constexpr(has_reflected_members<Self>()) template for (constexpr auto member : reflected_members<Self>()) {
-                    constexpr auto serial = std::meta::annotation_of_type<serial_t>(member);
-                    constexpr auto reload = std::meta::annotation_of_type<reload_t>(member);
+                    constexpr auto serial = annotation_of_type<serial_t>(member);
+                    constexpr auto reload = annotation_of_type<reload_t>(member);
 
                     if constexpr (serial or reload) {
-                        if constexpr (std::meta::is_convertible_type(std::meta::type_of(member), ^^Box<Object>)) {
+                        if constexpr (is_convertible_type(type_of(member), ^^Box<Object>)) {
                             if (self->[:member:]) {
                                 Box<Object> erased = std::move(self->[:member:]);
                                 stage.unsafe_hot_reload_child(erased);
-                                using Dest = [:std::meta::type_of(member):]::Pointee;
+                                using Dest = [:type_of(member):]::Pointee;
                                 ret.raw()->[:member:] = erased.template cast<Dest>();
                             }
                         } else {
-                            ret.raw()->[:member:] = self->[:member:];
+                            ret.raw()->[:member:] = std::move(self->[:member:]);
                         }
                     }
                 }
@@ -212,7 +214,7 @@ namespace bubble {
             if (not self->is_serial()) throw std::logic_error("attempted to serialize a non serial object");
 
             if constexpr (has_reflected_members<Self>()) template for (constexpr auto member : reflected_members<Self>()) {
-                constexpr auto annotation = std::meta::annotation_of_type<serial_t>(member);
+                constexpr auto annotation = annotation_of_type<serial_t>(member);
                 if constexpr (annotation) write_reflected_member(writer, self->[:member:]);
             }
         }
@@ -222,7 +224,7 @@ namespace bubble {
             auto self = box_cast<Self>(base_box);
 
             if constexpr (has_reflected_members<Self>()) template for (constexpr auto member : reflected_members<Self>()) {
-                constexpr auto annotation = std::meta::annotation_of_type<serial_t>(member);
+                constexpr auto annotation = annotation_of_type<serial_t>(member);
                 if constexpr (annotation) read_reflected_member(reader, self.raw()->[:member:]);
             }
 

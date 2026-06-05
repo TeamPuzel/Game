@@ -6,6 +6,13 @@
 namespace bubble {
     class Player;
 
+    /// A bubble used to transport the player between stages.
+    class PlayerBubble final : public CodableObject<PlayerBubble> {
+      public:
+
+    };
+
+    /// A particle effect that appears after a bubble pops.
     class BubblePopParticle final : public CodableObject<BubblePopParticle> {
       public:
         static constexpr u32 TIMER_DELAY = 10;
@@ -93,6 +100,8 @@ namespace bubble {
 
     class Player final : public CodableObject<Player> {
       public:
+        friend class Bubble;
+
         enum class Animation {
             None,
             Idle,
@@ -101,7 +110,7 @@ namespace bubble {
             Death
         };
 
-        Animator<Animation> animator;
+        RELOAD Animator<Animation> animator;
 
         enum class Facing : u8 { Left, Right } SERIAL facing = Facing::Right;
         enum class Character : u8 { Bub, Bob } SERIAL character = Character::Bub;

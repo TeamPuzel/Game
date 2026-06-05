@@ -14,12 +14,15 @@ COMPILER_FLAGS = \
 	-DCUSTOM_CXX_INCLUDE_DIR=$(REFLECTION_LLVM_DIR)/include/c++/v1 \
 	-DCUSTOM_CXX_LIB_DIR=$(REFLECTION_LLVM_DIR)/lib
 
-all: setup
+all: bundle
+
+build/build.ninja:
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $(COMPILER_FLAGS)
 
 # Counts the lines of code :)
 # Requires cloc to be installed of course.
 cloc:
-	@cloc src
+	@cloc src object
 
 # Switch clangd to the native build.
 clangd-build:
@@ -31,13 +34,17 @@ clangd-cross:
 	@echo "CompileFlags:" > .clangd
 	@echo "  CompilationDatabase: build-cross" >> .clangd
 
-setup: clangd-build
+setup: clangd-build build/build.ninja
 	@rm -rf build
 	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $(COMPILER_FLAGS)
 
+build: build/build.ninja
+	@ninja -C build
 
-build: setup
-	@cd build; ninja
+# Bundles the application.
+bundle: build/build.ninja
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUNDLE_RELEASE=ON $(COMPILER_FLAGS)
+	@ninja -C build
 
 # Runs the game natively.
 run: build
@@ -47,18 +54,10 @@ profile: build
 	@cd build; xcrun xctrace record --template 'Game' --launch -- ./bubble
 
 # A simple command for recompiling parts of the game while it's running.
-# Because most of the runtime is just headers this inherently includes hot reloading those parts of the runtime.
-reload:
-	@rm -rf build/CMakeFiles
-	@rm -rf build/obj
-	@rm -rf build/res
-	@rm -rf build/.ninja_deps
-	@rm -rf build/.ninja_log
-	@rm -rf build/build.ninja
-	@rm -rf build/cmake_install.cmake
-	@rm -rf build/CMakeCache.txt
-	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHOT_RELOAD=ON $(COMPILER_FLAGS)
-	@cd build; ninja
+# Because most of the engine is just headers this inherently includes hot reloading those parts of the engine.
+reload: build/build.ninja
+	@cmake -B build -DHOT_RELOAD=ON
+	@ninja -C build
 	@pkill -USR1 bubble
 
 # A convenience for building the binary for Windows from UNIX operating systems.
@@ -74,13 +73,3 @@ cross-build: cross-setup
 
 cross-run: cross-build
 	@cd build-cross; wine bubble.exe
-
-wasm-setup: clangd-wasm
-	@rm -rf build-wasm
-	@cmake -B build-cross -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-	    -DCMAKE_TOOLCHAIN_FILE=cross/wasm-toolchain.cmake
-
-wasm-build: wasm-setup
-	@cd build-wasm; ninja
-
-# wasm-serve: # TODO: Host output locally.

@@ -20,10 +20,10 @@ using namespace rt;
 // Alternatively SDL does have an audio library, but due to the stupid way SDL uses trampolines for
 // everything dead code elimination doesn't work on it, and it's generally used as a massive dynamic library anyway.
 // I do not wish to bother with fixing static linkage or adding another massive library just to use one function.
-auto SdlIo::perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> {
+auto SdlIo::perform_read_oggfile(std::string_view path, u32 frequency) -> std::vector<f32> {
     i32 errval = 0;
 
-    stb_vorbis* vorbis = stb_vorbis_open_filename(path, &errval, nullptr);
+    stb_vorbis* vorbis = stb_vorbis_open_filename(cstr(path), &errval, nullptr);
     if (not vorbis) throw std::runtime_error("stb error");
 
     ScopeExit scope_exit_vorbis = [=] { stb_vorbis_close(vorbis); };

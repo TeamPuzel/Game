@@ -9,7 +9,7 @@
 namespace bubble {
     class ScoreBoard final : public Scene {
       public:
-        enum class Character : u8 { Bub, Bob } character = Character::Bub;
+        enum class Character : u8 { Bub, Bob };
 
         struct PendingScore final {
             Character character;
@@ -198,7 +198,7 @@ namespace bubble {
             scores.clear();
             scores.reserve(10);
 
-            if (auto file = io.try_read_file("scores.bin")) {
+            if (auto file = io.try_read_file(io.get_prefix_path(BUBBLE_TEAMNAME, BUBBLE_APPNAME) + "scores.bin")) {
                 io::BinaryReader reader { std::span(*file) };
 
                 u32 score_count = reader.u32();
@@ -235,7 +235,7 @@ namespace bubble {
                 writer.u32(score.score_storage);
             }
 
-            io.write_file("scores.bin", result);
+            io.write_file(io.get_prefix_path(BUBBLE_TEAMNAME, BUBBLE_APPNAME) + "scores.bin", result);
         }
 
         void return_to_title(Io& io);

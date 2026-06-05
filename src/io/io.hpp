@@ -61,15 +61,16 @@ class Io {
   protected:
     Io() noexcept {}
 
-    virtual auto perform_read_file(char const* path) -> std::vector<u8> = 0;
-    virtual void perform_write_file(char const* path, std::span<u8> data) = 0;
-    virtual auto perform_open_library(char const* path) -> void* = 0;
+    virtual auto perform_read_file(std::string_view path) -> std::vector<u8> = 0;
+    virtual void perform_write_file(std::string_view path, std::span<u8> data) = 0;
+    virtual auto perform_open_library(std::string_view path) -> void* = 0;
     virtual void perform_close_library(void* library) = 0;
-    virtual auto perform_load_symbol(void* library, char const* name) -> void* = 0;
-    virtual auto perform_read_wavefile(char const* path, u32 frequency) -> std::vector<f32> = 0;
-    virtual auto perform_read_oggfile(char const* path, u32 frequency) -> std::vector<f32> = 0;
-    virtual auto perform_get_environment(char const* name) -> std::optional<std::string> = 0;
-    virtual void perform_set_environment(char const* name, std::optional<std::string_view> value) = 0;
+    virtual auto perform_load_symbol(void* library, std::string_view name) -> void* = 0;
+    virtual auto perform_read_wavefile(std::string_view path, u32 frequency) -> std::vector<f32> = 0;
+    virtual auto perform_read_oggfile(std::string_view path, u32 frequency) -> std::vector<f32> = 0;
+    virtual auto perform_get_environment(std::string_view name) -> std::optional<std::string> = 0;
+    virtual void perform_set_environment(std::string_view name, std::optional<std::string_view> value) = 0;
+    virtual auto perform_get_prefix_path(std::string_view organization, std::string_view app_name) -> std::string = 0;
 
   public:
     Io(Io const&) = delete;
@@ -112,16 +113,16 @@ class Io {
         }
 
         auto symbol(std::string_view name) const -> void* {
-            return io.perform_load_symbol(obj, name.data());
+            return io.perform_load_symbol(obj, name);
         }
     };
 
     auto open_library(std::string_view path) [[clang::lifetimebound]] -> DynamicLibrary {
-        return DynamicLibrary(*this, perform_open_library(path.data()));
+        return DynamicLibrary(*this, perform_open_library(path));
     }
 
     auto read_file(std::string_view path) -> std::vector<u8> {
-        return perform_read_file(path.data());
+        return perform_read_file(path);
     }
 
     auto try_read_file(std::string_view path) -> std::optional<std::vector<u8>> {
@@ -129,23 +130,27 @@ class Io {
     }
 
     void write_file(std::string_view path, std::span<u8> data) {
-        perform_write_file(path.data(), data);
+        perform_write_file(path, data);
     }
 
     auto read_wavefile(std::string_view path, u32 frequency = 48000) -> std::vector<f32> {
-        return perform_read_wavefile(path.data(), frequency);
+        return perform_read_wavefile(path, frequency);
     }
 
     auto read_oggfile(std::string_view path, u32 frequency = 48000) -> std::vector<f32> {
-        return perform_read_oggfile(path.data(), frequency);
+        return perform_read_oggfile(path, frequency);
     }
 
     auto get_environment(std::string_view name) -> std::optional<std::string> {
-        return perform_get_environment(name.data());
+        return perform_get_environment(name);
     }
 
     void set_environment(std::string_view name, std::optional<std::string_view> value) {
-        perform_set_environment(name.data(), value);
+        perform_set_environment(name, value);
+    }
+
+    auto get_prefix_path(std::string_view organization, std::string_view app_name) -> std::string {
+        return perform_get_prefix_path(organization, app_name);
     }
 
   private:

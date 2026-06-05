@@ -445,7 +445,7 @@ namespace math {
     /// A vector type, an alias of a matrix.
     template <numeric T, const usize LENGTH> using Vector = Matrix<T, LENGTH, 1>;
 
-#ifndef MSVC_COMPAT
+#ifndef BUBBLE_MSVC_COMPAT
     template <numeric... T> Matrix(T...) -> Matrix<T...[0], sizeof...(T), 1>;
 #endif
 

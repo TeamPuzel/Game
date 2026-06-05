@@ -66,10 +66,24 @@ void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
                 auto dy = position.y - player->position.y;
 
                 if (math::abs(dx) < WIDTH_RADIUS * 2 and math::abs(dy) < HEIGHT_RADIUS * 2) {
-                    if (math::abs(player->position.y - position.y) < 4) {
+                    if (math::abs(dx) > math::abs(dy)) {
                         position.x += math::sign(dx);
                     } else {
-                        pop(player, sound, stage);
+                        if (
+                            dy > 0 and
+                            (player->state == Player::State::Airborne or player->state == Player::State::Jumping) and
+                            player->air_velocity.y >= 0 and
+                            player->get_input_jump(input)
+                        ) {
+                            position.y += 2; // TODO: Maybe this shouldn't be duplicated.
+                            player->air_velocity.y = Player::JUMP_FORCE;
+                            player->state = Player::State::Jumping;
+                            player->jump_timer = Player::JUMP_DELAY;
+
+                            sound.play(stage.get_sounds().get("sfx::jump").clone());
+                        } else {
+                            pop(player, sound, stage);
+                        }
                     }
                 }
             }
@@ -97,7 +111,7 @@ void Bubble::pop(Player* player, rt::SoundStage& sound, Stage& stage, usize dept
             auto dx = position.x - other->position.x;
             auto dy = position.y - other->position.y;
 
-            if (math::abs(dx) < WIDTH_RADIUS * 2 and math::abs(dy) < HEIGHT_RADIUS * 2) {
+            if (math::abs(dx) < WIDTH_RADIUS * 3 and math::abs(dy) < HEIGHT_RADIUS * 3) {
                 other->pop(player, sound, stage, depth + 1);
             }
         }
@@ -135,7 +149,7 @@ void Player::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
     if (left and not right) facing = Facing::Left;
     if (right and not left) facing = Facing::Right;
 
-    if (attack and not attack_timer) {
+    if (attack and not attack_timer and not (state == State::Death)) {
         attack_timer = ATTACK_DELAY;
         sound.play(stage.get_sounds().get("sfx::launch").clone());
         stage.add(Box<Bubble>::make(position, bubble_launch_direction()));

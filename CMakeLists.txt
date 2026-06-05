@@ -29,17 +29,17 @@ if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
     add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
 
     # Reflection.
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -fno-blocks -stdlib=libc++ -freflection -freflection-latest -fexpansion-statements")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdlib++ -nostdinc++ -fno-blocks -freflection -freflection-latest -fexpansion-statements")
     add_compile_definitions(BUBBLE_REFLECTION_ENABLED)
 
     if(DEFINED CUSTOM_CXX_INCLUDE_DIR AND DEFINED CUSTOM_CXX_LIB_DIR)
         set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES "${CUSTOM_CXX_INCLUDE_DIR}")
-        link_directories("${CUSTOM_CXX_LIB_DIR}")
 
         if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
             link_libraries(
-                "${CUSTOM_MAC_LIBCXX}"
-                "${CUSTOM_CXX_LIB_DIR}/libunwind.1.0.dylib"
+                "${CUSTOM_CXX_LIB_DIR}/libc++.a"
+                "${CUSTOM_CXX_LIB_DIR}/libc++abi.a"
+                "${CUSTOM_CXX_LIB_DIR}/libunwind.a"
             )
         endif()
     endif()
@@ -61,7 +61,7 @@ else()
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2")
 
     # Toggles off some features which make MSVC sad, such as use of C++26 extensions in C++23 mode.
-    add_compile_definitions(MSVC_COMPAT)
+    add_compile_definitions(BUBBLE_MSVC_COMPAT)
 
     # Force MSVC to place executables sanely in the root of the build folder.
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}")
@@ -71,6 +71,9 @@ else()
 
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ENTRY:mainCRTStartup")
 endif()
+
+add_compile_definitions(BUBBLE_TEAMNAME="TeamPuzel")
+add_compile_definitions(BUBBLE_APPNAME="Bubble Bobble DX")
 
 # Depencencies ---------------------------------------------------------------------------------------------------------
 
@@ -101,7 +104,7 @@ endif()
 add_library(dyn MODULE ${GAME_OBJECT_SOURCES})
 
 target_link_libraries(dyn PRIVATE SDL3::SDL3)
-target_include_directories(dyn PRIVATE include lib/stb)
+target_include_directories(dyn PRIVATE include)
 
 set_target_properties(dyn PROPERTIES
     PREFIX ""
@@ -126,4 +129,35 @@ endforeach()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     file(COPY "lib/SDL3-3.2.24/lib/x64/SDL3.dll" DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+endif()
+
+# Bundle ---------------------------------------------------------------------------------------------------------------
+
+if(BUNDLE_RELEASE AND NOT HOT_RELOAD AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    add_dependencies(bubble dyn)
+
+    set(APP_RESOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/res")
+    set(APP_OBJECT_DIR "${CMAKE_CURRENT_BINARY_DIR}/obj")
+    set(APP_TEMPLATE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/templates/Bubble Bobble DX App")
+    set(APP_BUNDLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/Bubble Bobble DX.app")
+    set(HOMEBREW_SDL "/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib")
+
+    add_custom_command(TARGET bubble POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_TEMPLATE_DIR}" "${APP_BUNDLE_DIR}"
+
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${APP_BUNDLE_DIR}/Contents/Frameworks"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${APP_BUNDLE_DIR}/Contents/MacOS"
+
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:bubble>" "${APP_BUNDLE_DIR}/Contents/MacOS/bubble"
+        COMMAND ${CMAKE_COMMAND} -E copy "${HOMEBREW_SDL}" "${APP_BUNDLE_DIR}/Contents/Frameworks/"
+
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_RESOURCE_DIR}" "${APP_BUNDLE_DIR}/Contents/Resources/res"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_OBJECT_DIR}" "${APP_BUNDLE_DIR}/Contents/Resources/obj"
+
+        COMMAND install_name_tool -change "${HOMEBREW_SDL}" "@executable_path/../Frameworks/libSDL3.0.dylib" "${APP_BUNDLE_DIR}/Contents/MacOS/bubble"
+
+        COMMAND codesign --force --deep --sign - "${APP_BUNDLE_DIR}"
+
+        COMMENT "Bundling for macOS..."
+    )
 endif()
