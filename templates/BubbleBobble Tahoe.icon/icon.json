@@ -1,7 +1,4 @@
 {
-  "features" : [
-    "refractivity"
-  ],
   "fill" : "system-dark",
   "groups" : [
     {
@@ -9,7 +6,7 @@
       "hidden" : false,
       "layers" : [
         {
-          "glass" : true,
+          "glass" : false,
           "image-name" : "BubbleBobble 3.png",
           "name" : "BubbleBobble 3",
           "position" : {
@@ -19,28 +16,9 @@
               0
             ]
           }
-        }
-      ],
-      "refractivity" : {
-        "depth" : 0.82765625,
-        "enabled" : true,
-        "strength" : 0.6645703125
-      },
-      "shadow" : {
-        "kind" : "layer-color",
-        "opacity" : 1
-      },
-      "specular" : true,
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.5
-      }
-    },
-    {
-      "blur-material" : null,
-      "layers" : [
+        },
         {
-          "glass" : true,
+          "glass" : false,
           "image-name" : "BubbleBobble 5.png",
           "name" : "BubbleBobble 5",
           "position" : {
@@ -52,18 +30,14 @@
           }
         }
       ],
-      "refractivity" : {
-        "depth" : 0,
-        "enabled" : false,
-        "strength" : 0.5
-      },
       "shadow" : {
         "kind" : "layer-color",
-        "opacity" : 0.6
+        "opacity" : 1
       },
+      "specular" : true,
       "translucency" : {
         "enabled" : true,
-        "value" : 0.2
+        "value" : 0.5
       }
     }
   ],

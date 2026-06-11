@@ -48,11 +48,11 @@ namespace bubble {
         }
 
         void wrap_position() noexcept {
-            constexpr i32 screen_width = 32 * 8;                        // 256 px
-            constexpr i32 screen_height = 30 * 8;                       // 240 px
-            constexpr i32 top_margin = 4 * 8;                           // 32  px
-            // constexpr i32 top_margin = 0;                               // 0   px
-            constexpr i32 playable_height = screen_height - top_margin; // 208 px
+            static constexpr i32 screen_width = 32 * 8;                        // 256 px
+            static constexpr i32 screen_height = 30 * 8;                       // 240 px
+            static constexpr i32 top_margin = 4 * 8;                           // 32  px
+            // static constexpr i32 top_margin = 0;                               // 0   px
+            static constexpr i32 playable_height = screen_height - top_margin; // 208 px
 
             // Horizontal wrap.
             if (position.x < 0) {
@@ -88,6 +88,19 @@ namespace bubble {
 
         /// An arbitrary editor toggle.
         virtual void alternate() noexcept {}
+
+        /// This is really just a horrible hack because other than macOS dynamic_cast just does not
+        /// work across shared libraries and I can't implement a proper portable cast without
+        /// C++26 reflection to form the inheritance metadata.
+        /// The reflection dependency must only be used for development features to maintain compatibility
+        /// with the stripped down MSVC builds.
+        virtual auto prevents_transition() const noexcept -> bool {
+            return false;
+        }
+
+        virtual auto prevents_scoring() const noexcept -> bool {
+            return false;
+        }
     };
 
     template <typename T, typename U> [[deprecated]] auto flat_cast(U* ptr) noexcept -> T* {

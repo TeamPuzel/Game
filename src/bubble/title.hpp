@@ -30,9 +30,11 @@ namespace bubble {
             sounds->enqueue("music::score",    "res/snes_champion.ogg",      Ogg);
             sounds->enqueue("music::controls", "res/snes_pro_player.ogg",    Ogg);
 
-            sounds->enqueue("sfx::launch", "res/sfx_2.wav",  Wave);
-            sounds->enqueue("sfx::jump",   "res/sfx_9.wav",  Wave);
-            sounds->enqueue("sfx::death",  "res/sfx_13.wav", Wave);
+            sounds->enqueue("sfx::launch",       "res/sfx_2.wav",  Wave);
+            sounds->enqueue("sfx::jump",         "res/sfx_9.wav",  Wave);
+            sounds->enqueue("sfx::death",        "res/sfx_13.wav", Wave);
+            sounds->enqueue("sfx::enemy_launch", "res/sfx_17.wav", Wave);
+            sounds->enqueue("sfx::pickup",       "res/sfx_6.wav",  Wave);
 
             sounds->fetch(io);
         }

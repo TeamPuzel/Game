@@ -30,7 +30,8 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
                     : sensor_a;
 
                 if (
-                    sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE and
+                    sensor.hit(SNAP_DISTANCE_BACK, SNAP_DISTANCE_FORWARD) and
+                    not stage.solid_at((i32) position.x, (i32) position.y - HEIGHT_RADIUS - 8 * 5) and
                     (position.y - (HEIGHT_RADIUS - 8 * 5)) > (8 * 4) // Do not jump out of bounds.
                 ) {
                     for (auto obj : stage.objs()) {
@@ -68,7 +69,7 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
                 ? sensor_b
                 : sensor_a;
 
-            if (sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE) {
+            if (sensor.hit(SNAP_DISTANCE_BACK, SNAP_DISTANCE_FORWARD)) {
                 position.y += sensor.distance;
             } else {
                 state = State::Airborne;
@@ -82,7 +83,7 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
                 ? sensor_b
                 : sensor_a;
 
-            if (sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE) {
+            if (sensor.hit(SNAP_DISTANCE_BACK, SNAP_DISTANCE_FORWARD)) {
                 position.y += sensor.distance;
                 state = State::Grounded;
             }
@@ -97,7 +98,7 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
                 ? sensor_b
                 : sensor_a;
 
-            if (not jump_lock and sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE) {
+            if (not jump_lock and sensor.hit(SNAP_DISTANCE_BACK, SNAP_DISTANCE_FORWARD)) {
                 position.y += sensor.distance;
                 state = State::Grounded;
             }

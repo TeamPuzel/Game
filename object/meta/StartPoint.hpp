@@ -2,7 +2,7 @@
 #include <bubble>
 
 namespace bubble {
-    class StartPoint final : public CodableObject<StartPoint> {
+    class StartPoint : public CodableObject<StartPoint> {
       public:
         enum class Facing : u8 { Left, Right } SERIAL facing = Facing::Right;
         enum class Character : u8 { Bub, Bob } SERIAL character = Character::Bub;

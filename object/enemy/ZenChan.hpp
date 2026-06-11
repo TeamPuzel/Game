@@ -3,7 +3,7 @@
 #include "Enemy.hpp"
 
 namespace bubble {
-    class ZenChan final : public CodableObject<ZenChan, Enemy> {
+    class ZenChan : public CodableObject<ZenChan, Enemy> {
       public:
         enum class Facing : u8 { Left, Right } SERIAL facing = Facing::Right;
         RELOAD u8 jump_lock = 0;
@@ -12,7 +12,8 @@ namespace bubble {
         static constexpr fixed SPEED = 1;
         static constexpr i32 WIDTH_RADIUS = 7;
         static constexpr i32 HEIGHT_RADIUS = 7;
-        static constexpr i32 SNAP_DISTANCE = 2;
+        static constexpr i32 SNAP_DISTANCE_BACK = 5;
+        static constexpr i32 SNAP_DISTANCE_FORWARD = 2;
 
         enum class State {
             Grounded,
@@ -47,8 +48,16 @@ namespace bubble {
             );
         }
 
-        auto bubble_sprite_pos() const -> BubbleSpritePosition override {
+        auto bubble_sprite_pos() const -> SpritePosition override {
             return { .x = 6, .y = 18 };
+        }
+
+        auto particle_sprite_pos() const -> SpritePosition override {
+            return { .x = 9, .y = 18 };
+        }
+
+        void reset() override {
+            state = State::Airborne;
         }
 
         void flip() noexcept override {

@@ -27,6 +27,9 @@ namespace math {
         constexpr void operator-=(point const& other) noexcept {
             *this = point { x + other.x, y + other.y };
         }
+
+        bool operator==(point const& other) const noexcept = default;
+        bool operator!=(point const& other) const noexcept = default;
     };
 
     /// Classic Sonic angle math.

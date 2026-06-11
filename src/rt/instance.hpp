@@ -7,13 +7,11 @@
 #include <font>
 #include <sound>
 #include <concepts>
-#include <sstream>
 #include <string>
 #include <optional>
 #include <variant>
 #include <atomic>
 #include <unordered_set>
-#include <iostream>
 #include <chrono>
 #include <numeric>
 #include <coroutine>
@@ -1196,18 +1194,24 @@ namespace rt {
             rate.lap();
 
             const auto draw_perf_overlay = [&] {
-                std::stringstream out;
-                out << "Assumed rate: ";
-                if (rate.common_rate) out << *rate.common_rate; else out << "Unknown";
-                out << std::endl
-                    << "Estimated rate: " << rate.estimated_hertz << std::endl
-                    << "Average ms: " << rate.estimated_millis << std::endl
-                    << "Vsync status: " << (is_vsync ? "Enabled" : "Disabled") << std::endl
-                    << "Heuristic lock status: " << (heuristic_rate_lock ? "Enabled" : "Disabled") << std::endl
-                    << "Scale: " << scale << 'x' << std::endl
-                    << "Resolution: " << target.width() << 'x' << target.height() << std::endl;
+                auto overlay = std::format(
+                    "Assumed rate: {}\n"
+                    "Estimated rate: {}\n"
+                    "Average ms: {:.4f}\n"
+                    "VSync status: {}\n"
+                    "Heuristic lock status: {}\n"
+                    "Scale: {}x\n"
+                    "Resolution: {}x{}\n",
+                    rate.common_rate ? std::to_string(*rate.common_rate) : "Unknown",
+                    rate.estimated_hertz,
+                    rate.estimated_millis,
+                    is_vsync ? "Enabled" : "Disabled",
+                    heuristic_rate_lock ? "Enabled" : "Disabled",
+                    scale,
+                    target.width(), target.height()
+                );
 
-                draw::MultilineText text { out.str(), font::mine() };
+                draw::MultilineText text { overlay, font::mine() };
                 target | draw::draw(text, target.width() - text.width() - 8, 8);
             };
 

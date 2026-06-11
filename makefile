@@ -2,6 +2,8 @@
 # It is not actually used for building anything, all of that is specified with CMake.
 # These are mostly used as Zed tasks but I define them here for compatibility with other workflows.
 
+.PHONY: clangd-build clangd-cross setup profile bundle build run profile reload
+
 BUILD_TYPE ?= Release
 
 REFLECTION_LLVM_DIR ?= /Users/teampuzel/OpenSource/clang-p2996/build
@@ -15,9 +17,6 @@ COMPILER_FLAGS = \
 	-DCUSTOM_CXX_LIB_DIR=$(REFLECTION_LLVM_DIR)/lib
 
 all: bundle
-
-build/build.ninja: CMakeLists.txt
-	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $(COMPILER_FLAGS)
 
 # Counts the lines of code :)
 # Requires cloc to be installed of course.
@@ -34,15 +33,15 @@ clangd-cross:
 	@echo "CompileFlags:" > .clangd
 	@echo "  CompilationDatabase: build-cross" >> .clangd
 
-setup: clangd-build build/build.ninja
+setup: clangd-build
 	@rm -rf build
 	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $(COMPILER_FLAGS)
 
-build: build/build.ninja
+build: setup
 	@ninja -C build
 
 # Bundles the application.
-bundle: build/build.ninja
+bundle: setup
 	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUNDLE_RELEASE=ON $(COMPILER_FLAGS)
 	@ninja -C build
 
@@ -55,7 +54,7 @@ profile: build
 
 # A simple command for recompiling parts of the game while it's running.
 # Because most of the engine is just headers this inherently includes hot reloading those parts of the engine.
-reload: build/build.ninja
+reload: setup
 	@cmake -B build -DHOT_RELOAD=ON
 	@ninja -C build
 	@pkill -USR1 bubble

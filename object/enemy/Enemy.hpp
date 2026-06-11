@@ -4,10 +4,13 @@
 namespace bubble {
     class Enemy : public Object {
       public:
-        struct BubbleSpritePosition final { i32 x, y; };
+        struct SpritePosition final { i32 x, y; };
 
         /// Enemies need a sprite to display when in a bubble.
-        virtual auto bubble_sprite_pos() const -> BubbleSpritePosition = 0;
+        virtual auto bubble_sprite_pos() const -> SpritePosition = 0;
+
+        /// Enemies need a sprite to display when in a particle.
+        virtual auto particle_sprite_pos() const -> SpritePosition = 0;
 
         /// Enemies need a point value, often scaled by recursion depth when popping multiple bubbles.
         virtual auto point_value(usize depth) const -> u32 {
@@ -23,5 +26,15 @@ namespace bubble {
         }
 
         virtual void provoke(Object* sender) {}
+
+        virtual void reset() {}
+
+        auto prevents_transition() const noexcept -> bool override {
+            return true;
+        }
+
+        auto prevents_scoring() const noexcept -> bool override {
+            return true;
+        }
     };
 }

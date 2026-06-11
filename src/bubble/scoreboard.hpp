@@ -205,9 +205,26 @@ namespace bubble {
 
                 for (u32 i = 0; i < score_count; i += 1) {
                     // There is no such thing as a C++ programming language.
+                    //
+                    // I just want to point out how idiotic not specifying evaluation order is.
+                    // Because name is a std::string not inlining these two calls into the emplace_back call
+                    // means we actually extend its lifetime and have to use a std::move. This is horrible
+                    // because in C++ ownership is mechanical, not semantic, in other words non destructive.
+                    // At the end of this scope the destructor will have to run on the moved-from string
+                    // which is an incredibly stupid inefficiency caused by NOT SPECIFYING THE PROGRAMMING LANGUAGE.
+                    //
+                    // In fact, unspecified behavior is infinitely worse than undefined behavior, because it
+                    // changes the meaning of a program based on external context, but it technically isn't a bug,
+                    // and so it isn't something the compiler could catch. I would rather use Java than this language,
+                    // and I don't like Java.
+                    //
+                    // Anyway, calling it *the* C++ programming language is really dishonest when the specification
+                    // actually specifies a set of many possible programming languages!
+                    // From this point on I will make it a point of calling it the C++ programming languages
+                    // out of spite for this horrible specification (or lack thereof).
                     auto name = reader.cstr(NAME_LENGTH + 1);
                     auto score = reader.u32();
-                    scores.emplace_back(name, score);
+                    scores.emplace_back(std::move(name), score);
                 }
             }
 
@@ -256,9 +273,7 @@ namespace bubble {
             }
 
             if (input.gamepad_pressed(rt::Button::B) or input.key_pressed(rt::Key::Escape)) {
-                if (score_input) {
-                    score_input = false;
-                }
+                if (score_input) score_input = false;
             }
 
             if (input.gamepad_pressed(rt::Button::Left) or input.key_repeating(rt::Key::Left)) {

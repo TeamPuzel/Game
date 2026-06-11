@@ -586,7 +586,7 @@ namespace draw {
         }
     };
 
-    template <Plane T> DiscardSlice(T&&, i32, i32, i32, i32) -> DiscardSlice<std::decay<T>>;
+    template <Plane T> DiscardSlice(T&&, i32, i32, i32, i32) -> DiscardSlice<std::decay_t<T>>;
     template <Plane T> Slice(T&&, i32, i32, i32, i32) -> Slice<std::decay_t<T>>;
     template <Plane T> Grid(T&&, i32, i32) -> Grid<std::decay_t<T>>;
 
@@ -640,7 +640,7 @@ namespace draw {
         struct Shift final {
             i32 x, y;
 
-            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<T> {
+            template <SizedPlane T> constexpr auto operator()(T inner) const noexcept -> draw::Slice<std::decay_t<T>> {
                 return draw::Slice<T>(inner, x, y, inner.width(), inner.height());
             }
         };
@@ -707,56 +707,56 @@ namespace draw {
         struct ResizeLeft final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_left(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<std::decay_t<T>> {
+                return draw::Slice<std::decay_t<T>>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_left(offset);
             }
         };
 
         struct ResizeRight final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_right(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<std::decay_t<T>> {
+                return draw::Slice<std::decay_t<T>>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_right(offset);
             }
         };
 
         struct ResizeTop final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_top(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<std::decay_t<T>> {
+                return draw::Slice<std::decay_t<T>>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_top(offset);
             }
         };
 
         struct ResizeBottom final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_bottom(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<std::decay_t<T>> {
+                return draw::Slice<std::decay_t<T>>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_bottom(offset);
             }
         };
 
         struct ResizeHorizontal final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_horizontal(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<std::decay_t<T>> {
+                return draw::Slice<std::decay_t<T>>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_horizontal(offset);
             }
         };
 
         struct ResizeVertical final {
             i32 offset;
 
-            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_vertical(offset);
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<std::decay_t<T>> {
+                return draw::Slice<std::decay_t<T>>(std::forward<T>(inner), 0, 0, inner.width(), inner.height()).resize_vertical(offset);
             }
         };
 
         struct Resize final {
             i32 horizontal, vertical;
 
-            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<T> {
-                return draw::Slice<T>(std::forward<T>(inner), 0, 0, inner.width(), inner.height())
+            template <SizedPlane T> constexpr auto operator()(T&& inner) const noexcept -> draw::Slice<std::decay_t<T>> {
+                return draw::Slice<std::decay_t<T>>(std::forward<T>(inner), 0, 0, inner.width(), inner.height())
                     .resize_horizontal(horizontal)
                     .resize_vertical(vertical);
             }

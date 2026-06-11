@@ -2,16 +2,123 @@
 
 using namespace bubble;
 
+void Food::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {
+    tick += 1;
+    position.y += 1;
+
+    wrap_position();
+
+    const auto sensor_a = stage.sense(this, -WIDTH_RADIUS, HEIGHT_RADIUS, SensorDirection::Down);
+    const auto sensor_b = stage.sense(this,  WIDTH_RADIUS, HEIGHT_RADIUS, SensorDirection::Down);
+    const auto sensor = sensor_b.distance < sensor_a.distance
+        ? sensor_b
+        : sensor_a;
+
+    if (sensor.hit(3, 3)) {
+        position.y += sensor.distance;
+    }
+
+    if (stage.solid_at((i32) position.x, (i32) position.y)) position.x += 1;
+
+    if (not awarded) {
+        for (auto obj : stage.objs()) {
+            if (auto player = flat_cast<Player>(obj)) {
+                if (math::abs(player->position.x - position.x) < 8 and math::abs(player->position.y - position.y) < 8) {
+                    u32 points = point_value();
+                    switch (player->character) {
+                        case Player::Character::Bub: stage.award_points_bub(points); break;
+                        case Player::Character::Bob: stage.award_points_bob(points); break;
+                    }
+                    sound.play(stage.get_sounds().get("sfx::pickup").clone());
+                    awarded = true; stage.remove(this);
+                    stage.add(Box<PointParticle>::make(position, points));
+                }
+            }
+        }
+    }
+}
+
+PlayerBubble::PlayerBubble(Box<Player> player) : held_player(std::move(player)) {
+    position = held_player->position;
+}
+
+void PlayerBubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {
+    tick += 1;
+
+    position.x = math::floor(position.x);
+    position.y = math::floor(position.y);
+
+    if (stage.player_bubbles_should_move()) {
+        StartPoint* destination = nullptr;
+
+        auto chr_eq = [this] (StartPoint::Character c) {
+            switch (held_player->character) {
+                case Player::Character::Bub: return c == StartPoint::Character::Bub;
+                case Player::Character::Bob: return c == StartPoint::Character::Bob;
+            }
+        };
+
+        for (auto object : stage.objs()) {
+            if (auto start_point = flat_cast<StartPoint>(object); start_point and chr_eq(start_point->character)) {
+                destination = start_point;
+            }
+        }
+
+        switch (destination->facing) {
+            case StartPoint::Facing::Left:  held_player->facing = Player::Facing::Left;  break;
+            case StartPoint::Facing::Right: held_player->facing = Player::Facing::Right; break;
+        }
+
+        if (destination->position.x != position.x) position.x += math::sign(destination->position.x - position.x);
+        if (destination->position.y != position.y) position.y += math::sign(destination->position.y - position.y);
+
+        if (destination->position == position and stage.done_transitioning()) {
+            held_player->position = position;
+            held_player->state = Player::State::Airborne;
+            held_player->air_velocity = {};
+            stage.add(std::move(held_player));
+            stage.remove(this);
+        }
+    }
+}
+
+void PlayerBubble::draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept {
+    if (not held_player) return;
+
+    auto large_sheet = stage.get_sheet().inner | draw::grid(32, 32);
+
+    target | draw::draw(
+        large_sheet.tile(tick / 10 % 2 == 0 ? 0 : 1, 2)
+            | draw::apply_if(held_player->character == Player::Character::Bob, draw::map([] (Color c) -> Color {
+                if (c == Color::rgba(92, 230, 52)) return Color::rgba(76, 206, 220);
+                if (c == Color::rgba(252, 130, 116)) return Color::rgba(196, 118, 252);
+                return c;
+            })),
+        -16, -16
+    );
+}
+
+void Bubble::launch_enemy(Player* player, rt::SoundStage& sound, Stage& stage, usize depth) {
+    if (not held_enemy) return;
+
+    held_enemy->position = position;
+
+    EnemyParticle::Direction direction = math::sign(position.x - player->position.x) == -1
+        ? EnemyParticle::Direction::Left
+        : EnemyParticle::Direction::Right;
+
+    stage.add(Box<EnemyParticle>::make(std::move(held_enemy), direction, depth));
+
+    sound.play(stage.get_sounds().get("sfx::enemy_launch").clone());
+}
+
 void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {
     tick += 1;
     wrap_position();
 
     if (launch_timer) launch_timer -= 1;
 
-    if (stage.solid_at(this, -(WIDTH_RADIUS + 1), 0)) position.x += launch_timer ? 2 : 1;
-    if (stage.solid_at(this,  (WIDTH_RADIUS + 1), 0)) position.x -= launch_timer ? 2 : 1;
-
-    // if (position.x == 0 and not held_enemy) return pop(sound, stage);
+    if (tick == 60 * 30) return pop(sound, stage);
 
     if (launch_timer) {
         apply_launch();
@@ -22,6 +129,7 @@ void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
                 auto dy = position.y - enemy->position.y;
 
                 if (math::abs(dx) < WIDTH_RADIUS * 2 and math::abs(dy) < HEIGHT_RADIUS * 2) {
+                    position = enemy->position;
                     held_enemy = stage.take(enemy);
                     launch_timer = 0;
                     break;
@@ -40,7 +148,7 @@ void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
                 case Tile::Current::Down:  position.y += 1; break;
                 case Tile::Current::Left:  position.x -= 1; break;
                 case Tile::Current::Right: position.x += 1; break;
-                case Tile::Current::Solid: position.y -= 1; break;
+                case Tile::Current::Solid: break;
             }
         }
 
@@ -89,18 +197,28 @@ void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
             }
         }
     }
+
+    if (stage.solid_at(this, -(WIDTH_RADIUS + 1), 0)) position.x += launch_timer ? 2 : 1;
+    if (stage.solid_at(this,  (WIDTH_RADIUS + 1), 0)) position.x -= launch_timer ? 2 : 1;
 }
 
 void Bubble::pop(Player* player, rt::SoundStage& sound, Stage& stage, usize depth) {
     if (popped) return;
     popped = true;
 
+    u32 points = point_value(depth);
+
     switch (player->character) {
-        case Player::Character::Bub: stage.award_points_bub(point_value(depth)); break;
-        case Player::Character::Bob: stage.award_points_bob(point_value(depth)); break;
+        case Player::Character::Bub: stage.award_points_bub(points); break;
+        case Player::Character::Bob: stage.award_points_bob(points); break;
     }
 
-    launch_enemy(sound, stage);
+    stage.add(Box<PointParticle>::make(position, points));
+
+    usize next_depth = held_enemy ? depth + 1 : depth;
+
+    // Moves enemy out of this object.
+    launch_enemy(player, sound, stage, depth);
 
     stage.remove(this); stage.add(Box<BubblePopParticle>::make(position));
 
@@ -112,7 +230,7 @@ void Bubble::pop(Player* player, rt::SoundStage& sound, Stage& stage, usize dept
             auto dy = position.y - other->position.y;
 
             if (math::abs(dx) < WIDTH_RADIUS * 3 and math::abs(dy) < HEIGHT_RADIUS * 3) {
-                other->pop(player, sound, stage, depth + 1);
+                other->pop(player, sound, stage, next_depth);
             }
         }
     }
@@ -122,7 +240,42 @@ void Bubble::pop(rt::SoundStage& sound, Stage& stage) {
     if (popped) return;
     popped = true;
 
-    stage.add(std::move(held_enemy))->provoke(this);
+    if (held_enemy) {
+        held_enemy->position = position;
+        held_enemy->reset();
+        stage.add(std::move(held_enemy))->provoke(this);
+    }
+
+    stage.remove(this); stage.add(Box<BubblePopParticle>::make(position));
+}
+
+void Bubble::pop_special(char match, rt::SoundStage& sound, Stage& stage) {
+    if (popped) return;
+    popped = true;
+
+    if (held_enemy) {
+        held_enemy->position = position;
+        stage.add(std::move(held_enemy))->provoke(this);
+    } else {
+        using enum Food::Kind;
+
+        Food::Kind kind; switch (match) {
+            case '0': kind = FrenchFries;   break;
+            case '1': kind = IceCream;      break;
+            case '2': kind = Pudding;       break;
+            case '3': kind = Hamburger;     break;
+            case '4': kind = Shortcake;     break;
+            case '5': kind = ChocolateCake; break;
+            case '6': kind = Beer;          break;
+            case '7': kind = Frankfurter;   break;
+            case '8': kind = SoftIceCream;  break;
+            case '9': kind = SodaPopIce;    break;
+            default: throw std::logic_error(std::format("invalid special match: {}", match));
+        }
+
+        stage.add(Box<Food>::make(position, Food::Source::Clear, kind));
+    }
+
     stage.remove(this); stage.add(Box<BubblePopParticle>::make(position));
 }
 
@@ -201,7 +354,7 @@ void Player::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
                 ? sensor_b
                 : sensor_a;
 
-            if (sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE) {
+            if (sensor.hit(SNAP_DISTANCE_BACK, SNAP_DISTANCE_FORWARD)) {
                 position.y += sensor.distance;
             } else {
                 air_velocity = { 0, 0 };
@@ -216,7 +369,7 @@ void Player::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
                 ? sensor_b
                 : sensor_a;
 
-            if (sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE) {
+            if (sensor.hit(SNAP_DISTANCE_BACK, SNAP_DISTANCE_FORWARD)) {
                 position.y += sensor.distance;
                 state = State::Grounded;
             }
@@ -252,7 +405,7 @@ void Player::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
                     ? sensor_b
                     : sensor_a;
 
-                if (sensor.distance > -SNAP_DISTANCE and sensor.distance < SNAP_DISTANCE) {
+                if (sensor.hit(SNAP_DISTANCE_BACK, SNAP_DISTANCE_FORWARD)) {
                     position.y += sensor.distance;
                     state = State::Grounded;
                 }
@@ -272,8 +425,14 @@ void Player::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
         } break;
     }
 
-    if (stage.super_solid_at(this, -(WIDTH_RADIUS + 1), 0)) position.x += 1;
-    if (stage.super_solid_at(this,  (WIDTH_RADIUS + 1), 0)) position.x -= 1;
+    bool fast = math::abs(air_velocity.x) > fixed(0, 64);
+
+    if (fast and stage.solid_at(this, -(WIDTH_RADIUS + 1), 0)) position.x += 1;
+    if (fast and stage.solid_at(this,  (WIDTH_RADIUS + 1), 0)) position.x -= 1;
+}
+
+void Player::to_bubble(Stage& stage) noexcept {
+    stage.add(Box<PlayerBubble>::make(stage.take(this)));
 }
 
 EXPORT_GAME_OBJECT(Player);
