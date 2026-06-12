@@ -30,11 +30,13 @@ if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wno-deprecated-declarations")
     add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
 
-    # We are completely static and pure, there is no reason to arbitrarily restrict the versions we can
-    # run on based on the SDK. This overrides the configuration to allow all arm64 versions of macOS.
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmacosx-version-min=11")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
-    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-w")
+    if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+        # We are completely static and pure, there is no reason to arbitrarily restrict the versions we can
+        # run on based on the SDK. This overrides the configuration to allow all arm64 versions of macOS.
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmacosx-version-min=11")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
+        set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-w")
+    endif()
 
     if(DEFINED CUSTOM_CXX_INCLUDE_DIR AND DEFINED CUSTOM_CXX_LIB_DIR)
         # Reflection.

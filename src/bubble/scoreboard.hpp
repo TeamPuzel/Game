@@ -46,7 +46,7 @@ namespace bubble {
         struct Score final {
             bool is_empty;
             std::string name_storage;
-            u32 score_storage;
+            u32 score_storage = 0;
 
             Score(std::string name, u32 score) : is_empty(false) {
                 if (name.size() > NAME_LENGTH) throw std::runtime_error("name too large");
@@ -154,7 +154,7 @@ namespace bubble {
         }
 
         void sort_scores() {
-            std::ranges::sort(scores, std::greater(), &Score::score_storage);
+            std::ranges::stable_sort(scores, std::greater(), &Score::score_storage);
         }
 
         void try_submit_score(Io& io) {

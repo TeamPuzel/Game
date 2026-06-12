@@ -97,3 +97,14 @@ cross-build: cross-setup
 
 cross-run: cross-build
 	@cd build-cross; wine bubble.exe
+
+cross-setup-crt: clangd-cross
+	@rm -rf build-cross
+	@cmake -B build-cross -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+	    -DCMAKE_TOOLCHAIN_FILE=cross/windows-toolchain.cmake -DUSE_OPENGL_CRT_EFFECT=ON
+
+cross-build-crt: cross-setup-crt
+	@cd build-cross; ninja
+
+cross-run-crt: cross-build-crt
+	@cd build-cross; wine bubble.exe

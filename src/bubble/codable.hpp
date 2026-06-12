@@ -7,7 +7,7 @@ namespace bubble {
     namespace detail {
         /// C++23 fallback for class names, which are required for the isa cast.
         template <typename T> consteval auto extract_classname() -> std::string_view {
-#ifdef _MSC_VER
+#ifdef BUBBLE_MSVC_COMPAT
             std::string_view func = __FUNCSIG__; // "... extract_classname<class bubble::Player>(void)"
             usize first = func.find_first_of('<') + 1;
             usize last = func.find_last_of('>');
