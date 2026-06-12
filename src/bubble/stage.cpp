@@ -5,7 +5,7 @@
 
 using namespace bubble;
 
-void Stage::begin_transition(Io* io) {
+auto Stage::begin_transition(Io* io, rt::SoundStage* sound) -> bool {
     transition_timer = HEIGHT * 8;
 
     auto target = pre_transition_nes_target | draw::as_ref();
@@ -46,7 +46,25 @@ void Stage::begin_transition(Io* io) {
         }
     }
 
-    if (io) reload(*io);
+    if (io) {
+        if (not reload(*io)) {
+            sound->stop();
+
+            std::queue<ScoreBoard::PendingScore> queue;
+
+            queue.push({ .character = ScoreBoard::Character::Bub, .score = bub_score });
+            if (mode == GameMode::TwoPlayer)
+                queue.push({ .character = ScoreBoard::Character::Bob, .score = bob_score });
+
+            transition(Box<bubble::ScoreBoard>::make(
+                *io, std::move(sheet), std::move(sounds), std::move(queue)
+            ));
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void Stage::update(Io& io, rt::Input const& input, rt::SoundStage& sound) {
@@ -83,8 +101,8 @@ void Stage::update(Io& io, rt::Input const& input, rt::SoundStage& sound) {
                 auto decimal = std::format("{}", score)
                     | std::views::reverse;
 
-                if (decimal.size() >= 3 and decimal[2] == decimal[3]) {
-                    return decimal[2];
+                if (decimal.size() >= 3 and decimal[1] == decimal[2]) {
+                    return decimal[1];
                 }
 
                 return std::nullopt;
@@ -113,10 +131,13 @@ void Stage::update(Io& io, rt::Input const& input, rt::SoundStage& sound) {
                 if (auto player = isa_cast<Player>("Player", object)) {
                     players.emplace_back(take(object));
                 }
+                if (auto player = isa_cast<PlayerMaita>("PlayerMaita", object)) {
+                    players.emplace_back(take(object));
+                }
             }
 
             stage_index += 1;
-            begin_transition(io);
+            if (begin_transition(io, sound)) return;
 
             for (auto player : players | std::views::as_rvalue) {
                 ((Player*) add(std::move(player)))->to_bubble(*this);
@@ -257,6 +278,7 @@ void Stage::update(Io& io, rt::Input const& input, rt::SoundStage& sound) {
         static constexpr auto Y_POSITION = 140;
 
         auto player_descriptor = class_loader::load(io, "Player");
+        auto player_maita_descriptor = class_loader::load(io, "PlayerMaita");
 
         auto bub = (Player*) add(player_descriptor.initializer(EDGE_OFFSET, Y_POSITION));
         bub->to_bubble(*this);
@@ -265,6 +287,11 @@ void Stage::update(Io& io, rt::Input const& input, rt::SoundStage& sound) {
             auto bob = (Player*) add(player_descriptor.initializer(WIDTH * 8 - EDGE_OFFSET, Y_POSITION));
             bob->alternate();
             bob->to_bubble(*this);
+        }
+
+        if (mode == GameMode::TwoPlayerVersus) {
+            auto maita = (Player*) add(player_maita_descriptor.initializer(WIDTH * 8 - EDGE_OFFSET, Y_POSITION));
+            maita->to_bubble(*this);
         }
     }
 
@@ -289,8 +316,8 @@ void Stage::update(Io& io, rt::Input const& input, rt::SoundStage& sound) {
 
             sound.stop();
             transition(Box<bubble::ScoreBoard>::make(
-                io, std::move(sheet), std::move(sounds), std::move(queue))
-            );
+                io, std::move(sheet), std::move(sounds), std::move(queue)
+            ));
         }
 
         // We can add more objects during an object update so we can't use a range loop as that
@@ -599,6 +626,24 @@ void Stage::draw_viewport(Io& io, rt::Input const& input, Ref<Image> target) con
                     draw::Origin::BottomRight
                 );
         }
+
+        if (mode == GameMode::TwoPlayerVersus) {
+            hud_target
+                | draw::draw(
+                    draw::VStack(draw::VAlignment::Right, 2,
+                        draw::Text("Maita", font::pico())
+                            | draw::resize_right(2),
+                        draw::HStack(draw::HAlignment::Bottom, 3,
+                            draw::Text(std::format("", bob_score), font::mine())
+                                | draw::resize_bottom(-1),
+                            draw::HSpacer(3),
+                            draw::Text(std::format("{} x", bob_lives), font::pico()),
+                            sheet.tile_ref(0, 7).resize_bottom(-4)
+                        )
+                    ),
+                    draw::Origin::BottomRight
+                );
+        }
     }
 }
 
@@ -614,10 +659,14 @@ void Stage::lose_life_bub() {
 }
 
 void Stage::lose_life_bob() {
-    if (not bob_lives)
-        for (auto obj : objs())
+    if (not bob_lives) {
+        for (auto obj : objs()) {
             if (auto p = isa_cast<Player>("Player", obj); p and p->character == Player::Character::Bob)
                 remove(obj);
+            if (auto p = isa_cast<PlayerMaita>("PlayerMaita", obj))
+                remove(obj);
+        }
+    }
 
     bob_lives = std::max(0, (i32) bob_lives - 1);
 

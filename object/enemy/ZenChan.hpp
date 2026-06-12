@@ -10,6 +10,9 @@ namespace bubble {
 
         static constexpr fixed FALL_SPEED = 1;
         static constexpr fixed SPEED = 1;
+        static constexpr fixed LEAP_FORCE_X = fixed(1, 128);
+        static constexpr fixed LEAP_FORCE_Y = fixed(1, 128);
+        static constexpr fixed GRAVITY_FORCE = fixed(0, 28);
         static constexpr i32 WIDTH_RADIUS = 7;
         static constexpr i32 HEIGHT_RADIUS = 7;
         static constexpr i32 SNAP_DISTANCE_BACK = 5;
@@ -23,6 +26,7 @@ namespace bubble {
         } RELOAD state = State::Airborne;
 
         RELOAD usize tick = 0;
+        RELOAD point<fixed> air_velocity;
 
         auto facing_direction() const -> SensorDirection {
             switch (facing) {

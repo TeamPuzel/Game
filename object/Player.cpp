@@ -38,6 +38,43 @@ void Food::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& 
     }
 }
 
+void EnemyParticle::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {
+    tick += 1;
+
+    velocity.y += GRAVITY_FORCE;
+    velocity.y = std::clamp(velocity.y, -FALL_SPEED, FALL_SPEED);
+
+    position += velocity;
+    wrap_position();
+
+    if (stage.solid_at((i32) position.x + 9, (i32) position.y)) velocity.x = -SPEED;
+    if (stage.solid_at((i32) position.x - 9, (i32) position.y)) velocity.x =  SPEED;
+
+    if (stage.solid_at((i32) position.x, (i32) position.y + 9) and velocity.y >= 1) {
+        using enum Food::Kind;
+
+        // This is exceptionally contradictory and poorly documented in the resources
+        // I could find so this ordering is just random guesswork.
+        Food::Kind kind; switch (depth) {
+            case 0:  kind = GreenPepper; break;
+            case 1:  kind = Orange;      break;
+            case 2:  kind = Cucumber;    break;
+            case 3:  kind = Tomato;      break;
+            case 4:  kind = Watermelon;  break;
+            case 5:  kind = Pear;        break;
+            default: kind = Banana;      break;
+        }
+
+        stage.add(Box<Food>::make(position, Food::Source::Enemy, kind));
+
+        if (flat_cast<PlayerMaita>(held_enemy.raw())) {
+            stage.add(held_enemy.cast<PlayerMaita>())->damage();
+        }
+
+        stage.remove(this);
+    }
+}
+
 PlayerBubble::PlayerBubble(Box<Player> player) : held_player(std::move(player)) {
     position = held_player->position;
 }
@@ -87,13 +124,21 @@ void PlayerBubble::draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& sta
 
     auto large_sheet = stage.get_sheet().inner | draw::grid(32, 32);
 
+    auto maita = flat_cast<PlayerMaita>(held_player.raw());
+
+    auto tile = maita
+        ? large_sheet.tile(tick / 10 % 2 == 0 ? 0 : 1, 4)
+        : large_sheet.tile(tick / 10 % 2 == 0 ? 0 : 1, 2);
+
     target | draw::draw(
-        large_sheet.tile(tick / 10 % 2 == 0 ? 0 : 1, 2)
-            | draw::apply_if(held_player->character == Player::Character::Bob, draw::map([] (Color c) -> Color {
-                if (c == Color::rgba(92, 230, 52)) return Color::rgba(76, 206, 220);
-                if (c == Color::rgba(252, 130, 116)) return Color::rgba(196, 118, 252);
-                return c;
-            })),
+        tile
+            | draw::apply_if(not maita and held_player->character == Player::Character::Bob,
+                draw::map([] (Color c) -> Color {
+                    if (c == Color::rgba(92, 230, 52)) return Color::rgba(76, 206, 220);
+                    if (c == Color::rgba(252, 130, 116)) return Color::rgba(196, 118, 252);
+                    return c;
+                }
+            )),
         -16, -16
     );
 }
@@ -125,6 +170,17 @@ void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
 
         for (auto obj : stage.objs()) {
             if (auto enemy = flat_cast<Enemy>(obj)) {
+                auto dx = position.x - enemy->position.x;
+                auto dy = position.y - enemy->position.y;
+
+                if (math::abs(dx) < WIDTH_RADIUS * 2 and math::abs(dy) < HEIGHT_RADIUS * 2) {
+                    position = enemy->position;
+                    held_enemy = stage.take(enemy);
+                    launch_timer = 0;
+                    break;
+                }
+            }
+            if (auto enemy = flat_cast<PlayerMaita>(obj)) {
                 auto dx = position.x - enemy->position.x;
                 auto dy = position.y - enemy->position.y;
 
@@ -198,8 +254,20 @@ void Bubble::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
         }
     }
 
-    if (stage.solid_at(this, -(WIDTH_RADIUS + 1), 0)) position.x += launch_timer ? 2 : 1;
-    if (stage.solid_at(this,  (WIDTH_RADIUS + 1), 0)) position.x -= launch_timer ? 2 : 1;
+    bool solid_left   = stage.solid_at(this, -(WIDTH_RADIUS + 1), 0);
+    bool solid_right  = stage.solid_at(this,  (WIDTH_RADIUS + 1), 0);
+    bool solid_center = stage.solid_at(this, 0, 0);
+    u8 break_counter = 64;
+
+    while (break_counter and not solid_center and (solid_left and not solid_right or solid_right and not solid_left)) {
+        if (solid_left) position.x += 1;
+        if (solid_right) position.x -= 1;
+
+        break_counter -= 1;
+        solid_left  = stage.solid_at(this, -(WIDTH_RADIUS + 1), 0);
+        solid_right = stage.solid_at(this,  (WIDTH_RADIUS + 1), 0);
+        solid_center = stage.solid_at(this, 0, 0);
+    }
 }
 
 void Bubble::pop(Player* player, rt::SoundStage& sound, Stage& stage, usize depth) {
@@ -242,8 +310,10 @@ void Bubble::pop(rt::SoundStage& sound, Stage& stage) {
 
     if (held_enemy) {
         held_enemy->position = position;
-        held_enemy->reset();
-        stage.add(std::move(held_enemy))->provoke(this);
+        if (auto enemy = flat_cast<Enemy>(stage.add(std::move(held_enemy)))) {
+            enemy->reset();
+            enemy->provoke(this);
+        }
     }
 
     stage.remove(this); stage.add(Box<BubblePopParticle>::make(position));
@@ -254,8 +324,7 @@ void Bubble::pop_special(char match, rt::SoundStage& sound, Stage& stage) {
     popped = true;
 
     if (held_enemy) {
-        held_enemy->position = position;
-        stage.add(std::move(held_enemy))->provoke(this);
+        throw std::logic_error("it should not be possible to perform a special pop with enemies present");
     } else {
         using enum Food::Kind;
 
@@ -304,8 +373,7 @@ void Player::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
 
     if (attack and not attack_timer and not (state == State::Death)) {
         attack_timer = ATTACK_DELAY;
-        sound.play(stage.get_sounds().get("sfx::launch").clone());
-        stage.add(Box<Bubble>::make(position, bubble_launch_direction()));
+        this->attack(sound, stage);
     }
 
     if (jump and not jump_timer and state == State::Grounded) {
@@ -425,7 +493,7 @@ void Player::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage
         } break;
     }
 
-    bool fast = math::abs(air_velocity.x) > fixed(0, 64);
+    bool fast = math::abs(air_velocity.x) > fixed(0, 3);
 
     if (fast and stage.solid_at(this, -(WIDTH_RADIUS + 1), 0)) position.x += 1;
     if (fast and stage.solid_at(this,  (WIDTH_RADIUS + 1), 0)) position.x -= 1;
@@ -436,5 +504,9 @@ void Player::to_bubble(Stage& stage) noexcept {
 }
 
 EXPORT_GAME_OBJECT(Player);
+EXPORT_GAME_OBJECT(PlayerMaita);
+EXPORT_GAME_OBJECT(Food);
 EXPORT_GAME_OBJECT(Bubble);
+EXPORT_GAME_OBJECT(PlayerBubble);
 EXPORT_GAME_OBJECT(BubblePopParticle);
+EXPORT_GAME_OBJECT(EnemyParticle);

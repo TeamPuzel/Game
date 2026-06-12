@@ -1233,9 +1233,21 @@ namespace rt {
                         apply_window_size();
                     }
 
-                    #ifdef _MSC_VER // Fullscreen button for a funny operating system.
-                    if (input.key_pressed(Key::F1)) SDL_SetWindowFullscreen(window, true);
-                    #endif
+                    // Fullscreen buttons for a funny operating system that doesn't have one at the OS level.
+#ifdef _MSC_VER
+                    if (
+                        input.key_pressed(Key::F11)
+                            or
+                        input.key_held(Key::Option) and input.key_pressed(Key::Enter)
+                    ) SDL_SetWindowFullscreen(window, true);
+#endif
+                    if (audio_stream and input.key_pressed(Key::F2)) {
+                        if (SDL_GetAudioStreamGain(audio_stream) == 0.f) {
+                            SDL_SetAudioStreamGain(audio_stream, 1.f);
+                        } else {
+                            SDL_SetAudioStreamGain(audio_stream, 0.f);
+                        }
+                    }
                 }
 
                 game.update(io, input, sound_stage);

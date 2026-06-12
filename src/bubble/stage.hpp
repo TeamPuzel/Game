@@ -145,8 +145,9 @@ namespace bubble {
             }
         }
 
-        void begin_transition(Io* io = nullptr);
-        void begin_transition(Io& io) { begin_transition(&io); }
+        bool begin_transition(Io* io, rt::SoundStage* sound);
+        bool begin_transition(Io& io, rt::SoundStage& sound) { return begin_transition(&io, &sound); }
+        void begin_transition() { begin_transition(nullptr, nullptr); }
 
         auto player_bubbles_should_move() const -> bool {
             return tick >= START_TICK;
@@ -538,7 +539,8 @@ namespace bubble {
             io.write_file(std::format("../res/stage/{}.stage", stage_index), result);
         }
 
-        template <const bool DEV = false> void reload(Io& io) {
+        /// Answers true if a file was loaded, false if a new empty stage was created.
+        template <const bool DEV = false> auto reload(Io& io) -> bool {
             objects.clear();
 
             if (auto level_file = io.try_read_file(
@@ -567,8 +569,12 @@ namespace bubble {
 
                     this->objects.emplace_back(std::move(instance));
                 }
+
+                return true;
             } else {
                 for (Tile& tile : tiles) tile = {};
+
+                return false;
             }
         }
 

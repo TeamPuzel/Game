@@ -2,6 +2,7 @@
 #include <bubble>
 #include "meta/StartPoint.hpp"
 #include "enemy/Enemy.hpp"
+#include "enemy/Maita.hpp"
 
 namespace bubble {
     class Player;
@@ -38,6 +39,8 @@ namespace bubble {
 
         RELOAD usize tick = 0;
         RELOAD bool awarded = false;
+
+        Food() = default;
 
         explicit Food(point<fixed> position, Source source, Kind kind) : source(source), kind(kind) {
             this->position = position;
@@ -139,7 +142,7 @@ namespace bubble {
     class EnemyParticle : public CodableObject<EnemyParticle> {
       public:
         enum class Direction : u8 { Left, Right };
-        RELOAD Box<Enemy> held_enemy;
+        RELOAD Box<Object> held_enemy;
         RELOAD point<fixed> velocity;
         RELOAD usize tick = 0;
         RELOAD usize depth;
@@ -149,7 +152,9 @@ namespace bubble {
         static constexpr fixed FALL_SPEED = 4;
         static constexpr fixed SPEED = 1;
 
-        explicit EnemyParticle(Box<Enemy> enemy, Direction direction, usize depth)
+        EnemyParticle() = default;
+
+        explicit EnemyParticle(Box<Object> enemy, Direction direction, usize depth)
             : held_enemy(std::move(enemy)), depth(depth)
         {
             this->position = held_enemy->position;
@@ -162,40 +167,18 @@ namespace bubble {
             velocity.y = -LAUNCH_FORCE;
         }
 
-        void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override {
-            tick += 1;
-
-            velocity.y += GRAVITY_FORCE;
-            velocity.y = std::clamp(velocity.y, -FALL_SPEED, FALL_SPEED);
-
-            position += velocity;
-            wrap_position();
-
-            if (stage.solid_at((i32) position.x + 9, (i32) position.y)) velocity.x = -SPEED;
-            if (stage.solid_at((i32) position.x - 9, (i32) position.y)) velocity.x =  SPEED;
-
-            if (stage.solid_at((i32) position.x, (i32) position.y + 9) and velocity.y >= 1) {
-                using enum Food::Kind;
-
-                // This is exceptionally contradictory and poorly documented in the resources
-                // I could find so this ordering is just random guesswork.
-                Food::Kind kind; switch (depth) {
-                    case 0:  kind = GreenPepper; break;
-                    case 1:  kind = Orange;      break;
-                    case 2:  kind = Cucumber;    break;
-                    case 3:  kind = Tomato;      break;
-                    case 4:  kind = Watermelon;  break;
-                    case 5:  kind = Pear;        break;
-                    default: kind = Banana;      break;
-                }
-
-                stage.add(Box<Food>::make(position, Food::Source::Enemy, kind));
-                stage.remove(this);
+        auto particle_sprite_pos() const -> Enemy::SpritePosition {
+            if (auto enemy = flat_cast<Enemy>(held_enemy.raw())) {
+                return enemy->particle_sprite_pos();
+            } else {
+                return { .x = 9, .y = 19 }; // PlayerMaita
             }
         }
 
+        void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
+
         void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
-            auto [tx, ty] = held_enemy->particle_sprite_pos();
+            auto [tx, ty] = particle_sprite_pos();
             target | draw::draw(
                 stage.get_sheet().tile(tx, ty) | draw::rotate(tick / 4),
                 -8, -8
@@ -212,6 +195,8 @@ namespace bubble {
       public:
         RELOAD usize tick = 0;
         RELOAD Box<Player> held_player;
+
+        PlayerBubble() = default;
 
         explicit PlayerBubble(Box<Player> player);
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
@@ -252,6 +237,8 @@ namespace bubble {
         RELOAD u32 timer = TIMER_DELAY;
         RELOAD u32 points;
 
+        PointParticle() = default;
+
         PointParticle(point<fixed> position, u32 points) : points(points) {
             this->position = position;
         }
@@ -279,7 +266,7 @@ namespace bubble {
         enum class LaunchDirection : u8 { Left, Right } RELOAD launch_direction;
         RELOAD usize tick = 0;
         RELOAD u32 launch_timer = 25;
-        RELOAD Box<Enemy> held_enemy;
+        RELOAD Box<Object> held_enemy;
         RELOAD bool popped = false;
 
         Bubble() = default;
@@ -294,7 +281,12 @@ namespace bubble {
         static constexpr u32 BASE_POINT_VALUE = 10;
 
         auto point_value(usize depth) const -> u32 {
-            if (held_enemy) return held_enemy->point_value(depth); else return BASE_POINT_VALUE;
+            if (held_enemy) {
+                if (auto enemy = flat_cast<Enemy>(held_enemy.raw())) {
+                    return enemy->point_value(depth);
+                }
+            }
+            return BASE_POINT_VALUE;
         }
 
         auto pop_delay() const -> u32 {
@@ -314,6 +306,14 @@ namespace bubble {
         virtual void pop(rt::SoundStage& sound, Stage& stage);
         virtual void pop_special(char match, rt::SoundStage& sound, Stage& stage);
 
+        auto bubble_sprite_pos() const -> Enemy::SpritePosition {
+            if (auto enemy = flat_cast<Enemy>(held_enemy.raw())) {
+                return enemy->bubble_sprite_pos();
+            } else {
+                return { .x = 6, .y = 19 }; // PlayerMaita
+            }
+        }
+
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
 
         void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
@@ -330,7 +330,7 @@ namespace bubble {
                 if (tick >= 60 * 20) sprite_offset += 1;
                 if (tick >= 60 * 25) sprite_offset += 1;
 
-                auto [tx, ty] = held_enemy->bubble_sprite_pos();
+                auto [tx, ty] = bubble_sprite_pos();
                 target | draw::draw(
                     stage.get_sheet().tile(tx, ty)
                         | draw::apply_if(tick / 6 % 2 == 0, draw::mirror_x())
@@ -455,6 +455,11 @@ namespace bubble {
         }
 
       public:
+        virtual void attack(rt::SoundStage& sound, Stage& stage) {
+            sound.play(stage.get_sounds().get("sfx::launch").clone());
+            stage.add(Box<Bubble>::make(position, bubble_launch_direction()));
+        }
+
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
 
         void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
@@ -541,6 +546,45 @@ namespace bubble {
 
     template <> struct FallbackCoder<Player> {
         static void deserialize(Box<Player>& self, BinaryReader& reader) {
+            self->facing = (Player::Facing) reader.u8();
+            self->character = (Player::Character) reader.u8();
+        }
+    };
+
+    /// Horrible sideways multiple inheritance, but it works for the bonus game mode.
+    /// I can't even make it virtual which makes things extra jank!
+    /// In particular, this kind of hack would be pretty easy in an object oriented programming language,
+    /// such as Smalltalk, where messages are sent between objects. C++ is of course not object oriented,
+    /// not that this kind of code is a very good idea anyway.
+    ///
+    /// Still, I only have a day left to add this feature, so jank it is.
+    class PlayerMaita : public CodableObject<PlayerMaita, Player> {
+      public:
+        PlayerMaita() : CodableObject<PlayerMaita, Player>() {
+            character = Character::Bob;
+        }
+
+        void attack(rt::SoundStage& sound, Stage& stage) override {
+            sound.play(stage.get_sounds().get("sfx::launch").clone());
+            switch (facing) {
+                case Facing::Left:  stage.add(Box<FireBall>::make(Player::position, FireBall::Direction::Left));  break;
+                case Facing::Right: stage.add(Box<FireBall>::make(Player::position, FireBall::Direction::Right)); break;
+            }
+        }
+
+        void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
+            if (state == State::Death) return;
+
+            target | draw::draw(
+                stage.get_sheet().tile(tick / 6 % 2 == 0 ? 0 : 1, 19)
+                    | draw::apply_if(facing == Facing::Right, draw::mirror_x()),
+                -8, -8
+            );
+        }
+    };
+
+    template <> struct FallbackCoder<PlayerMaita> {
+        static void deserialize(Box<PlayerMaita>& self, BinaryReader& reader) {
             self->facing = (Player::Facing) reader.u8();
             self->character = (Player::Character) reader.u8();
         }

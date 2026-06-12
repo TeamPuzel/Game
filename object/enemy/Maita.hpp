@@ -8,18 +8,18 @@ namespace bubble {
         enum class Direction : u8 { Left, Right } RELOAD direction;
         RELOAD usize tick = 0;
 
+        static constexpr i32 LIFETIME = 30;
+        static constexpr i32 SPEED = 2;
+
         explicit FireBall(point<fixed> position, Direction direction) : direction(direction) {
             this->position = position;
         }
 
-        void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override {
-            tick += 1;
-            wrap_position();
-        }
+        void update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept override;
 
         void draw(Io& io, draw::Slice<Ref<Image>> target, Stage const& stage) const noexcept override {
             target | draw::draw(
-                stage.get_sheet().tile(tick / 6 % 2 == 0 ? 0 : 1, 19)
+                stage.get_sheet().tile(tick / 4 % 6, 20)
                     | draw::apply_if(direction == Direction::Right, draw::mirror_x()),
                 -8, -8
             );
@@ -37,6 +37,7 @@ namespace bubble {
         static constexpr i32 HEIGHT_RADIUS = 7;
         static constexpr i32 SNAP_DISTANCE_BACK = 5;
         static constexpr i32 SNAP_DISTANCE_FORWARD = 2;
+        static constexpr i32 FIRE_DISTANCE = FireBall::LIFETIME * FireBall::SPEED;
 
         enum class State {
             Grounded,
@@ -58,6 +59,13 @@ namespace bubble {
             switch (facing) {
                 case Facing::Left:  position.x -= SPEED; break;
                 case Facing::Right: position.x += SPEED; break;
+            }
+        }
+
+        void fire(rt::SoundStage& sound, Stage& stage) {
+            switch (facing) {
+                case Facing::Left:  stage.add(Box<FireBall>::make(position, FireBall::Direction::Left));
+                case Facing::Right: stage.add(Box<FireBall>::make(position, FireBall::Direction::Right));
             }
         }
 

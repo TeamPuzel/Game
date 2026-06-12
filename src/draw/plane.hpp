@@ -938,6 +938,12 @@ namespace draw {
         };
     }
 
+    constexpr auto map(Color from, Color to) noexcept {
+        return adapt::Map {
+            [from, to] (Color c, i32 x, i32 y) { return c == from ? to : c; }
+        };
+    }
+
     /// Performs a mapping of just the coordinate space.
     /// Receives the position, so the signature is `(i32 x, i32 y) -> (i32 x, i32 y)`
     template <typename F> constexpr adapt::MapPos<F> map_pos(F fn) noexcept {

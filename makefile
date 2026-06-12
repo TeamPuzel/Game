@@ -54,9 +54,17 @@ profile: build
 
 # A simple command for recompiling parts of the game while it's running.
 # Because most of the engine is just headers this inherently includes hot reloading those parts of the engine.
-reload: setup
-	@cmake -B build -DHOT_RELOAD=ON
-	@ninja -C build
+reload:
+	@rm -rf build/CMakeFiles
+	@rm -rf build/obj
+	@rm -rf build/res
+	@rm -rf build/.ninja_deps
+	@rm -rf build/.ninja_log
+	@rm -rf build/build.ninja
+	@rm -rf build/cmake_install.cmake
+	@rm -rf build/CMakeCache.txt
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHOT_RELOAD=ON $(COMPILER_FLAGS)
+	@cd build; ninja
 	@pkill -USR1 bubble
 
 # A convenience for building the binary for Windows from UNIX operating systems.

@@ -35,9 +35,18 @@ namespace bubble {
             sounds->enqueue("sfx::death",        "res/sfx_13.wav", Wave);
             sounds->enqueue("sfx::enemy_launch", "res/sfx_17.wav", Wave);
             sounds->enqueue("sfx::pickup",       "res/sfx_6.wav",  Wave);
+            sounds->enqueue("sfx::hit",          "res/sfx_3.wav",  Wave);
 
             sounds->fetch(io);
         }
+
+        static constexpr auto menu = std::to_array<std::string_view>({
+            "1 Player",
+            "2 Player",
+            "2 Player Versus",
+            "Scoreboard",
+            "Controls"
+        });
 
         void start(Io& io) {
             switch (menu_selection) {
@@ -99,12 +108,33 @@ namespace bubble {
 
             auto title_screen = draw::VStack(draw::VAlignment::Center, 1,
                 title_card,
-                draw::VStack(draw::VAlignment::Center, 4,
-                    draw::Text("1 Player", font::mine(), menu_item_color(0)),
-                    draw::Text("2 Player", font::mine(), menu_item_color(1)),
-                    draw::Text("2 Player Versus", font::mine(), menu_item_color(2)),
-                    draw::Text("Scoreboard", font::mine(), menu_item_color(3)),
-                    draw::Text("Controls", font::mine(), menu_item_color(4))
+                draw::VForEach(draw::VAlignment::Center, 4,
+                    // Cute how for all the advanced capabilities of LLVM, libc++ doesn't have enumerate before
+                    // clang 23 which I am not currently using, this is absolutely lovely.
+                    std::views::zip(menu, std::views::iota(0)),
+                    [&] (auto element) { auto [text, index] = element;
+                        auto sprite = sheet.tile_ref(2, 6)
+                            .resize_bottom(-11)
+                            .resize_right(-12)
+                            .shift(4 * (input.counter() / 10 % 4), 0)
+                                | draw::map(draw::color::WHITE, draw::color::pico::PINK);
+
+                        auto selected = draw::HStack(4,
+                            sprite,
+                            draw::Text(text, font::mine(), draw::color::pico::PINK),
+                            sprite | draw::mirror_x()
+                        );
+                        auto not_selected =
+                            draw::Text(text, font::mine(), draw::color::pico::WHITE);
+
+                        using ResultPlane = draw::EitherPlane<decltype(selected), decltype(not_selected)>;
+
+                        if (index == menu_selection) {
+                            return ResultPlane(std::move(selected));
+                        } else {
+                            return ResultPlane(std::move(not_selected));
+                        }
+                    }
                 )
             );
 

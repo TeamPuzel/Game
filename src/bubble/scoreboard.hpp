@@ -263,37 +263,40 @@ namespace bubble {
         void update(Io& io, rt::Input const& input, rt::SoundStage& sound) override {
             if (tick == 0 and sounds) sound.play(sounds->get("music::score").clone() | sound::loop());
 
-            if (input.gamepad_pressed(rt::Button::A) or input.key_pressed(rt::Key::Enter)) {
-                if (score_input) {
-                    try_submit_score(io);
-                } else {
-                    sound.stop();
-                    return_to_title(io);
+            // Just to make sure there are no accidental inputs immediately after the game ends.
+            if (tick > 30 or pending.empty()) {
+                if (input.gamepad_pressed(rt::Button::A) or input.key_pressed(rt::Key::Enter)) {
+                    if (score_input) {
+                        try_submit_score(io);
+                    } else {
+                        sound.stop();
+                        return_to_title(io);
+                    }
                 }
-            }
 
-            if (input.gamepad_pressed(rt::Button::B) or input.key_pressed(rt::Key::Escape)) {
-                if (score_input) score_input = false;
-            }
+                if (input.gamepad_pressed(rt::Button::B) or input.key_pressed(rt::Key::Escape)) {
+                    if (score_input) score_input = false;
+                }
 
-            if (input.gamepad_pressed(rt::Button::Left) or input.key_repeating(rt::Key::Left)) {
-                score_input_cursor = std::max(0, score_input_cursor - 1);
-                recompute_selection();
-            }
+                if (input.gamepad_pressed(rt::Button::Left) or input.key_repeating(rt::Key::Left)) {
+                    score_input_cursor = std::max(0, score_input_cursor - 1);
+                    recompute_selection();
+                }
 
-            if (input.gamepad_pressed(rt::Button::Right) or input.key_repeating(rt::Key::Right)) {
-                score_input_cursor = std::min(NAME_LENGTH - 1, score_input_cursor + 1);
-                recompute_selection();
-            }
+                if (input.gamepad_pressed(rt::Button::Right) or input.key_repeating(rt::Key::Right)) {
+                    score_input_cursor = std::min(NAME_LENGTH - 1, score_input_cursor + 1);
+                    recompute_selection();
+                }
 
-            if (input.gamepad_pressed(rt::Button::Up) or input.key_repeating(rt::Key::Up)) {
-                score_input_selection = std::min(52, score_input_selection + 1);
-                apply_selection();
-            }
+                if (input.gamepad_pressed(rt::Button::Up) or input.key_repeating(rt::Key::Up)) {
+                    score_input_selection = std::min(52, score_input_selection + 1);
+                    apply_selection();
+                }
 
-            if (input.gamepad_pressed(rt::Button::Down) or input.key_repeating(rt::Key::Down)) {
-                score_input_selection = std::max(0, score_input_selection - 1);
-                apply_selection();
+                if (input.gamepad_pressed(rt::Button::Down) or input.key_repeating(rt::Key::Down)) {
+                    score_input_selection = std::max(0, score_input_selection - 1);
+                    apply_selection();
+                }
             }
 
             tick += 1;

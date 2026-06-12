@@ -9,7 +9,7 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
     wrap_position();
 
     for (auto obj : stage.objs()) {
-        if (auto player = flat_cast<Player>(obj)) {
+        if (auto player = flat_cast<Player>(obj); player and not flat_cast<PlayerMaita>(obj)) {
             if (math::abs(player->position.x - position.x) < 8 and math::abs(player->position.y - position.y) < 8)
                 player->damage();
         }
@@ -35,7 +35,7 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
                     (position.y - (HEIGHT_RADIUS - 8 * 5)) > (8 * 4) // Do not jump out of bounds.
                 ) {
                     for (auto obj : stage.objs()) {
-                        if (flat_cast<Player>(obj) and obj->position.y < position.y) {
+                        if (flat_cast<Player>(obj) and not flat_cast<PlayerMaita>(obj) and obj->position.y < position.y) {
                             state = State::Jumping;
                             jump_lock = 30;
                         }
@@ -45,6 +45,7 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
                 for (auto obj : stage.objs()) {
                     if (
                         flat_cast<Player>(obj) and obj->position.y <= position.y and
+                        not flat_cast<PlayerMaita>(obj) and
                         (
                             obj->position.x < position.x and facing == Facing::Right or
                             obj->position.x > position.x and facing == Facing::Left
@@ -61,6 +62,24 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
                 flip();
             } else {
                 walk_forward();
+            }
+
+            fixed facing_sign; switch (facing) {
+                case Facing::Left:  facing_sign = -1; break;
+                case Facing::Right: facing_sign =  1; break;
+            }
+            const auto chasm = not stage.solid_at(this, i32((WIDTH_RADIUS * 2) * facing_sign), HEIGHT_RADIUS + 3);
+            if (chasm and (hash % 256) < 128) {
+                for (auto obj : stage.objs()) {
+                    if (
+                        flat_cast<Player>(obj) and obj->position.y <= position.y and
+                        not flat_cast<PlayerMaita>(obj)
+                    ) {
+                        state = State::Leaping;
+                        air_velocity = { LEAP_FORCE_X * facing_sign, -LEAP_FORCE_Y };
+                        return;
+                    }
+                }
             }
 
             const auto sensor_a = stage.sense(this, -WIDTH_RADIUS, HEIGHT_RADIUS, SensorDirection::Down);
@@ -108,7 +127,31 @@ void ZenChan::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stag
             if (jump_lock < 10) position.y -= 1;
         } break;
         case State::Leaping: {
+            const auto sensor_w = stage.sense(this, facing_direction());
+            if (sensor_w.distance < WIDTH_RADIUS + 2) {
+                air_velocity.x *= -1;
+                flip();
+            }
 
+            air_velocity.y += GRAVITY_FORCE;
+
+            position += air_velocity;
+
+            if (air_velocity.y > FALL_SPEED) air_velocity.y = FALL_SPEED;
+
+            if (air_velocity.y > fixed(0, 3)) {
+                const auto sensor_a = stage.sense(this, -WIDTH_RADIUS, HEIGHT_RADIUS, SensorDirection::Down);
+                const auto sensor_b = stage.sense(this,  WIDTH_RADIUS, HEIGHT_RADIUS, SensorDirection::Down);
+
+                const auto sensor = sensor_b.distance < sensor_a.distance
+                    ? sensor_b
+                    : sensor_a;
+
+                if (sensor.hit(SNAP_DISTANCE_BACK, SNAP_DISTANCE_FORWARD)) {
+                    position.y += sensor.distance;
+                    state = State::Grounded;
+                }
+            }
         } break;
     }
 }

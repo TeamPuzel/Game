@@ -1,6 +1,7 @@
 #pragma once
 #include <primitive>
 #include "image.hpp"
+#include <ranges>
 
 namespace draw::util {
     template <typename Tuple, typename F, usize... Is> void tuple_for_each_impl(
@@ -189,7 +190,7 @@ namespace draw {
             auto ret = Image(width_cache, height_cache);
             i32 cursor_y = 0;
 
-            for (usize i = 0; i < items.size(); ++i) {
+            for (usize i = 0; i < items.size(); i += 1) {
                 auto plane = map(items[i]);
                 i32 offset;
                 switch (alignment) {
@@ -206,13 +207,13 @@ namespace draw {
 
       public:
         template <typename R> VForEach(VAlignment alignment, i32 spacing, R&& range, Map map)
-            : items(std::ranges::begin(range), std::ranges::end(range)),
+            : items(std::from_range, range),
                 map(std::move(map)), alignment(alignment), spacing(spacing)
         {
             width_cache = 0;
             height_cache = 0;
 
-            for (usize i = 0; i < items.size(); ++i) {
+            for (usize i = 0; i < items.size(); i += 1) {
                 auto plane = this->map(items[i]);
                 width_cache = std::max(width_cache, plane.width());
                 height_cache += plane.height();
@@ -268,7 +269,7 @@ namespace draw {
             auto ret = Image(width_cache, height_cache);
             i32 cursor_x = 0;
 
-            for (usize i = 0; i < items.size(); ++i) {
+            for (usize i = 0; i < items.size(); i += 1) {
                 auto plane = map(items[i]);
                 i32 offset;
                 switch (alignment) {
@@ -285,13 +286,13 @@ namespace draw {
 
       public:
         template <typename R> HForEach(HAlignment alignment, i32 spacing, R&& range, Map map)
-            : items(std::ranges::begin(range), std::ranges::end(range)),
+            : items(std::from_range, range),
                 map(std::move(map)), alignment(alignment), spacing(spacing)
         {
             width_cache = 0;
             height_cache = 0;
 
-            for (usize i = 0; i < items.size(); ++i) {
+            for (usize i = 0; i < items.size(); i += 1) {
                 auto plane = this->map(items[i]);
                 height_cache = std::max(height_cache, plane.height());
                 width_cache += plane.width();

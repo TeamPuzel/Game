@@ -3,15 +3,54 @@
 
 using namespace bubble;
 
+void FireBall::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {
+    tick += 1;
+
+    switch (direction) {
+        case Direction::Left:  position.x -= SPEED; break;
+        case Direction::Right: position.x += SPEED; break;
+    }
+
+    wrap_position();
+
+    for (auto obj : stage.objs()) {
+        if (auto player = flat_cast<Player>(obj); player and not flat_cast<PlayerMaita>(obj)) {
+            if (math::abs(player->position.x - position.x) < 8 and math::abs(player->position.y - position.y) < 8)
+                player->damage();
+        }
+    }
+
+    if (tick == LIFETIME) stage.remove(this);
+
+    if (stage.solid_at((i32) position.x, (i32) position.y)) {
+        sound.play(stage.get_sounds().get("sfx::hit").clone());
+        stage.remove(this);
+    }
+}
+
 void Maita::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage& stage) noexcept {
     tick += 1;
 
     wrap_position();
 
     for (auto obj : stage.objs()) {
-        if (auto player = flat_cast<Player>(obj)) {
+        if (auto player = flat_cast<Player>(obj); player and not flat_cast<PlayerMaita>(obj)) {
             if (math::abs(player->position.x - position.x) < 8 and math::abs(player->position.y - position.y) < 8)
                 player->damage();
+
+            fixed facing_sign; switch (facing) {
+                case Facing::Left:  facing_sign = -1; break;
+                case Facing::Right: facing_sign =  1; break;
+            }
+
+            if (
+                math::abs(player->position.y - position.y) < 8 and
+                facing_sign == math::sign(player->position.x - position.x) and
+                math::abs(player->position.x - position.x) < FIRE_DISTANCE and
+                tick % 60 == 0
+            ) {
+                fire(sound, stage); break; // End loop early to avoid accidentally firing twice at both players.
+            }
         }
     }
 
@@ -35,7 +74,7 @@ void Maita::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage&
                     (position.y - (HEIGHT_RADIUS - 8 * 5)) > (8 * 4) // Do not jump out of bounds.
                 ) {
                     for (auto obj : stage.objs()) {
-                        if (flat_cast<Player>(obj) and obj->position.y < position.y) {
+                        if (flat_cast<Player>(obj) and not flat_cast<PlayerMaita>(obj) and obj->position.y < position.y) {
                             state = State::Jumping;
                             jump_lock = 30;
                         }
@@ -44,7 +83,8 @@ void Maita::update(Io& io, rt::Input const& input, rt::SoundStage& sound, Stage&
             } else if ((hash % 256) < 16) {
                 for (auto obj : stage.objs()) {
                     if (
-                        flat_cast<Player>(obj) and obj->position.y <= position.y and
+                        flat_cast<Player>(obj) and not flat_cast<PlayerMaita>(obj) and
+                        obj->position.y <= position.y and
                         (
                             obj->position.x < position.x and facing == Facing::Right or
                             obj->position.x > position.x and facing == Facing::Left

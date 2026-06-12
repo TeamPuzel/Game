@@ -129,9 +129,9 @@ namespace bubble {
         requires std::is_base_of_v<Object, Base>
     class CodableObject : public Base {
       public:
-        auto is_dynobject() const -> bool final override { return true; }
+        auto is_dynobject() const -> bool override { return true; }
 
-        auto classname() const -> std::string_view final override { return identifier_of(^^Self); }
+        auto classname() const -> std::string_view override { return identifier_of(^^Self); }
 
         /// By default an object is serial if it has any serialized properties.
         /// An object with no serialized properties of its own can still opt in by being annotated as serial itself.
@@ -245,9 +245,9 @@ namespace bubble {
         requires std::is_base_of_v<Object, Base>
     class CodableObject : public Base {
       public:
-        auto is_dynobject() const -> bool final override { return true; }
+        auto is_dynobject() const -> bool override { return true; }
 
-        auto classname() const -> std::string_view final override { return detail::extract_classname<Self>(); }
+        auto classname() const -> std::string_view override { return detail::extract_classname<Self>(); }
 
         auto is_serial() const -> bool override { return false; }
 
