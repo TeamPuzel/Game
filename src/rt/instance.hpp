@@ -22,7 +22,10 @@
 #include <exception>
 #include <filesystem>
 #include <SDL3/SDL.h>
+
+#ifdef USE_OPENGL_CRT_EFFECT
 #include <SDL3/SDL_opengl.h>
+#endif
 
 /// An implemenation of Io purely in terms of SDL3. This is very convenient because we don't need
 /// to depend on the standard library or the operating system in SDL3 based projects.
@@ -691,9 +694,9 @@ namespace rt {
             estimated_millis = average;
             estimated_hertz = u32(1000.0 / average);
             for (const auto rate : common_rates) {
-                static constexpr f64 ERROR = 0.5;
+                static constexpr f64 error = 0.5;
                 const f64 closest = 1000.0 / (f64) (u32) rate;
-                if (std::abs(average - closest) <= ERROR) {
+                if (std::abs(average - closest) <= error) {
                     common_rate = rate; break;
                 } else {
                     common_rate = std::nullopt;

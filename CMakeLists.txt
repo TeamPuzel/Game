@@ -36,12 +36,6 @@ if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
     set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-w")
 
-    if(USE_OPENGL_CRT_EFFECT)
-        # For the GL version.
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -framework OpenGL -Wno-unused-command-line-argument")
-        add_compile_definitions(USE_OPENGL_CRT_EFFECT)
-    endif()
-
     if(DEFINED CUSTOM_CXX_INCLUDE_DIR AND DEFINED CUSTOM_CXX_LIB_DIR)
         # Reflection.
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdlib++ -nostdinc++ -fno-blocks -freflection -freflection-latest -fexpansion-statements")
@@ -104,6 +98,11 @@ endif()
 # software sound renderer, and serving as a source for input logic. It is also used to load runtime libraries.
 find_package(SDL3 REQUIRED)
 
+if(USE_OPENGL_CRT_EFFECT)
+    find_package(OpenGL REQUIRED)
+    add_compile_definitions(USE_OPENGL_CRT_EFFECT)
+endif()
+
 # Targets --------------------------------------------------------------------------------------------------------------
 
 file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.mm)
@@ -118,6 +117,10 @@ if(NOT HOT_RELOAD)
 
     target_include_directories(bubble PRIVATE include lib/stb)
     target_link_libraries(bubble PRIVATE SDL3::SDL3)
+
+    if(USE_OPENGL_CRT_EFFECT)
+        target_link_libraries(bubble PRIVATE OpenGL::GL)
+    endif()
 endif()
 
 add_library(dyn MODULE ${GAME_OBJECT_SOURCES})
