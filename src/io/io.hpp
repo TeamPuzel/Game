@@ -71,6 +71,7 @@ class Io {
     virtual auto perform_get_environment(std::string_view name) -> std::optional<std::string> = 0;
     virtual void perform_set_environment(std::string_view name, std::optional<std::string_view> value) = 0;
     virtual auto perform_get_prefix_path(std::string_view organization, std::string_view app_name) -> std::string = 0;
+    virtual auto perform_get_random() -> u64 = 0;
 
   public:
     Io(Io const&) = delete;
@@ -151,6 +152,10 @@ class Io {
 
     auto get_prefix_path(std::string_view organization, std::string_view app_name) -> std::string {
         return perform_get_prefix_path(organization, app_name);
+    }
+
+    auto get_random() -> u64 {
+        return perform_get_random();
     }
 
   private:

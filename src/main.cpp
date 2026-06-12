@@ -62,9 +62,18 @@ auto main() -> i32 {
     sa.sa_flags = SA_RESTART; // restart syscalls after signal
     sigaction(SIGUSR1, &sa, NULL);
 #endif
+
+#ifndef USE_OPENGL_CRT_EFFECT
     rt::run(Game(), "Bubble Bobble DX",
         32 * 8 * 2, // NES tiles to window size.
         30 * 8 * 2,
         2
     );
+#else
+    rt::run_crt_gl(Game(), "Bubble Bobble DX",
+        32 * 8 * 2, // NES tiles to window size.
+        30 * 8 * 2,
+        2
+    );
+#endif
 }

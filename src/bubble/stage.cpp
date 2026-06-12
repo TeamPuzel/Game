@@ -149,6 +149,12 @@ void Stage::update(Io& io, rt::Input const& input, rt::SoundStage& sound) {
 
     if (input.key_pressed(rt::Key::Tab)) editor_mode = not editor_mode;
 
+    if (input.key_pressed(rt::Key::F1)) {
+        for (auto object : objs()) {
+            if (object->prevents_transition()) remove(object);
+        }
+    }
+
     if (editor_mode) {
         if (input.key_pressed(rt::Key::Num1)) editor_pane = EditorPane::Tile;
         if (input.key_pressed(rt::Key::Num2)) editor_pane = EditorPane::Current;

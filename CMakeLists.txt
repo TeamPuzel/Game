@@ -20,6 +20,8 @@ project(Game C CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(USE_OPENGL_CRT_EFFECT "Use a CRT fragment shader" OFF)
+
 if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
     set(CMAKE_CXX_STANDARD 26)
 
@@ -33,6 +35,12 @@ if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmacosx-version-min=11")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
     set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-w")
+
+    if(USE_OPENGL_CRT_EFFECT)
+        # For the GL version.
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -framework OpenGL -Wno-unused-command-line-argument")
+        add_compile_definitions(USE_OPENGL_CRT_EFFECT)
+    endif()
 
     if(DEFINED CUSTOM_CXX_INCLUDE_DIR AND DEFINED CUSTOM_CXX_LIB_DIR)
         # Reflection.

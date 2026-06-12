@@ -49,6 +49,23 @@ bundle: setup
 run: build
 	@cd build; ./bubble
 
+setup-crt: clangd-build
+	@rm -rf build
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $(COMPILER_FLAGS)\
+		-DUSE_OPENGL_CRT_EFFECT=ON
+
+build-crt: setup-crt
+	@ninja -C build
+
+# Bundles the application.
+bundle-crt: setup-crt
+	@cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUNDLE_RELEASE=ON $(COMPILER_FLAGS)
+	@ninja -C build
+
+# Runs the game natively.
+run-crt: build-crt
+	@cd build; ./bubble
+
 profile: build
 	@cd build; xcrun xctrace record --template 'Game' --launch -- ./bubble
 

@@ -190,4 +190,9 @@ namespace math {
         const i32 floored = (raw >> 8) - (is_negative && has_fraction ? 1 : 0);
         return floored;
     }
+
+    [[clang::always_inline]]
+    constexpr auto lerp(fixed a, fixed b, fixed t) noexcept -> fixed {
+        return a + (b - a) * t;
+    }
 }

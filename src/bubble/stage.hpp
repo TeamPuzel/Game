@@ -66,8 +66,11 @@ namespace bubble {
         mutable Image nes_target = Image(32 * 8, 30 * 8);
         mutable Image pre_transition_nes_target = Image(32 * 8, 30 * 8);
 
+      public:
         static constexpr auto WIDTH          = 32;
         static constexpr auto HEIGHT         = 30;
+
+      private:
         static constexpr auto START_TICK     = 7 * 60; // 7 now that the intro has a transition, was 9 when not.
         static constexpr auto GAME_END_DELAY = 60 * 2;
 

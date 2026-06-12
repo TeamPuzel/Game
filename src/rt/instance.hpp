@@ -22,6 +22,7 @@
 #include <exception>
 #include <filesystem>
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_opengl.h>
 
 /// An implemenation of Io purely in terms of SDL3. This is very convenient because we don't need
 /// to depend on the standard library or the operating system in SDL3 based projects.
@@ -154,6 +155,12 @@ class SdlIo final : public Io {
 
     auto perform_get_prefix_path(std::string_view organization, std::string_view app_name) -> std::string override {
         return SDL_GetPrefPath(cstr(organization), cstr(app_name));
+    }
+
+    auto perform_get_random() -> u64 override {
+        return
+            u64(std::bit_cast<u32>(SDL_rand_bits())) |
+            u64(std::bit_cast<u32>(SDL_rand_bits())) << 32;
     }
 
   public:
@@ -1046,13 +1053,16 @@ namespace rt {
     /// This method was moved from Game into an environment message.
     /// A game cannot run itself, it is run by the platform it's on
     /// and can be run in many ways, this is just one implementation.
-    static void run(Instance auto game, char const* title, i32 width, i32 height, i32 scale) {
+    static void run(Instance auto game, char const* title, i32 width, i32 height, i32 scale, bool autoscale = true) {
         static std::atomic<bool> is_running = false;
 
         rt::detail::main_executor(); // Initialize the main executor instance.
 
         SdlIo io;
         Io::unsafe_push_threadlocal_io(&io);
+
+        const i32 base_width = width / scale;
+        const i32 base_height = height / scale;
 
         if (is_running.load()) {
             throw RunError { RunError::Reason::AlreadyRunning };
@@ -1168,13 +1178,23 @@ namespace rt {
         auto input = rt::input(scale);
         auto rate = rt::refresh_rate_lock();
 
-        const auto apply_window_size = [&] {
+        const auto apply_window_size = [&] (bool autoscale = false) {
             // We are explicitly using the scaled window size and not the
             // GetWindowSizeInPixels(window:w:h:) call because we do actually want to scale
             // our own pixel scale by the display scale.
             // Effectively the game is always scaled twice on high density displays which will
             // give consistent sizing between devices.
             i32 w, h; SDL_GetWindowSize(window, &w, &h);
+
+            if (autoscale) {
+                // Calculate how many times the base resolution can fit.
+                i32 scale_x = w / base_width;
+                i32 scale_y = h / base_height;
+
+                // Try pick the largest possible scale.
+                scale = std::max(1, std::min(scale_x, scale_y));
+            }
+
             resize_texture(w / scale, h / scale);
             target.resize(w / scale, h / scale);
             input.rescale(scale);
@@ -1185,7 +1205,7 @@ namespace rt {
                 switch (event.type) {
                     case SDL_EVENT_QUIT:
                         goto end;
-                    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: apply_window_size(); break;
+                    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: apply_window_size(autoscale); break;
                     default: break;
                 }
             }
@@ -1308,8 +1328,8 @@ namespace rt {
     /// and can be run in many ways, this is just one implementation.
     ///
     /// This overload uses the default window size of 800x600.
-    inline void run(Instance auto& game, char const* title, i32 scale = 1) {
-        run(game, title, 800, 600, scale);
+    inline void run(Instance auto& game, char const* title, i32 scale = 1, bool autoscale = true) {
+        run(game, title, 800, 600, scale, autoscale);
     }
 
     template <typename F> void run_io(F fn) requires requires (F fn, Io& io) { fn(io); } {
@@ -1325,222 +1345,613 @@ namespace rt {
         fn(io);
     }
 
-    // /// Runs a game in the environment, applying a CRT effect.
-    // ///
-    // /// This method was moved from Game into an environment message.
-    // /// A game cannot run itself, it is run by the platform it's on
-    // /// and can be run in many ways, this is just one implementation.
-    // static void run_crt(Instance auto& game, char const* title, i32 width, i32 height, i32 scale) {
-    //     static std::atomic<bool> is_running = false;
+    /// Runs a game in the environment, applying a CRT effect.
+    ///
+    /// This method was moved from Game into an environment message.
+    /// A game cannot run itself, it is run by the platform it's on
+    /// and can be run in many ways, this is just one implementation.
+    static void run_crt(Instance auto game, char const* title, i32 width, i32 height, i32 scale, bool autoscale = true) {
+        static std::atomic<bool> is_running = false;
 
-    //     if (is_running.load()) {
-    //         throw RunError { RunError::Reason::AlreadyRunning };
-    //     } else {
-    //         is_running.store(true);
-    //     }
+        rt::detail::main_executor(); // Initialize the main executor instance.
 
-    //     if (not SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
-    //         throw RunError {
-    //             RunError::Reason::CouldNotInitializeSdl,
-    //             SDL_GetError(),
-    //         };
-    //     }
+        SdlIo io;
+        Io::unsafe_push_threadlocal_io(&io);
 
-    //     auto window = SDL_CreateWindow(
-    //         title, width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY
-    //     );
-    //     if (not window) {
-    //         throw RunError {
-    //             RunError::Reason::CouldNotCreateWindow,
-    //             SDL_GetError(),
-    //         };
-    //     }
-    //     SDL_SetWindowMinimumSize(window, width, height);
-    //     SDL_HideCursor();
-    //     SDL_SyncWindow(window);
+        const i32 base_width = width / scale;
+        const i32 base_height = height / scale;
 
-    //     // A simple SDL provided renderer.
-    //     //
-    //     // We are already using SDL and there is no need to bother setting up OpenGL just to
-    //     // render to a texture and blit it to the screen. There's really no need for hardware
-    //     // acceleration to begin with, the only API that should be used is a platform specific
-    //     // synchronization primitive such as CADisplayLink on macOS. That would also properly
-    //     // support variable refresh rates on such platforms which I am unsure SDL actually handles.
-    //     auto renderer = SDL_CreateRenderer(window, nullptr);
-    //     if (not renderer) {
-    //         throw RunError {
-    //             .reason = RunError::Reason::CouldNotCreateRenderer,
-    //             .description = SDL_GetError(),
-    //         };
-    //     }
-    //     // We can discard the error, it is inefficient not to use vsync but if a platform doesn't support it
-    //     // we have much greater issues than rendering too fast and it's impressive we even got this far.
-    //     // i.e. that kind of platform is probably better suited for a different runtime implementation.
-    //     bool is_vsync = SDL_SetRenderVSync(renderer, 1);
+        if (is_running.load()) {
+            throw RunError { RunError::Reason::AlreadyRunning };
+        } else {
+            is_running.store(true);
+        }
 
-    //     // Not const because we reallocate on window resize.
-    //     //
-    //     // Interesting note: stretching a pixel texture is the best way to get sharp pixels
-    //     // with resizable windows on modern displays. You do very much notice blurry pixels,
-    //     // you do not notice when the pixel ratio isn't quite square.
-    //     //
-    //     // Sure, on extremely low resolution displays this was once much more extreme, but no
-    //     // operating system actually supports those anyhow. There is no reason to compromise here
-    //     // as for whatever reason a lot of games seem to do.
-    //     SDL_Texture* texture = nullptr;
+        if (not SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD)) {
+            throw RunError {
+                RunError::Reason::CouldNotInitializeSdl,
+                SDL_GetError(),
+            };
+        }
 
-    //     /// Reallocates the texture.
-    //     auto const resize_texture = [&texture, renderer, &width, &height] (i32 w, i32 h) -> void {
-    //         if (texture) {
-    //             SDL_DestroyTexture(texture);
-    //         }
-    //         texture = SDL_CreateTexture(
-    //             renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h
-    //         );
-    //         if (not texture) {
-    //             throw RunError {
-    //                 RunError::Reason::CouldNotCreateTexture,
-    //                 SDL_GetError(),
-    //             };
-    //         }
-    //         SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
-    //         width = w;
-    //         height = h;
-    //     };
-    //     resize_texture(width, height);
+        auto basePath = SDL_GetBasePath();
+        if (basePath) std::filesystem::current_path(basePath);
 
-    //     SdlIo io;
-    //     Io::unsafe_push_threadlocal_io(&io);
+        auto window = SDL_CreateWindow(
+            title, width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY
+        );
+        if (not window) {
+            throw RunError {
+                RunError::Reason::CouldNotCreateWindow,
+                SDL_GetError(),
+            };
+        }
+        SDL_SetWindowMinimumSize(window, width, height);
+        SDL_HideCursor();
+        SDL_SyncWindow(window);
 
-    //     // Set up the proper, esoteric RAII cleanup in case of uncaught exceptions.
-    //     // I don't feel like documenting this nonsense, but this is somehow the cleanest way to do this
-    //     // until std::scope_exit is implemented >:(
-    //     // Alternatively one could make all the code atrocious by wrapping SDL pointers in unique pointers
-    //     // with deleters but that's rather unreadable.
-    //     ScopeExit scope_exit = [=] {
-    //         Io::unsafe_pop_threadlocal_io();
-    //         SDL_DestroyTexture(texture);
-    //         SDL_DestroyRenderer(renderer);
-    //         SDL_DestroyWindow(window);
-    //         SDL_Quit();
-    //         is_running.store(false);
-    //     };
+        auto renderer = SDL_CreateRenderer(window, nullptr);
+        if (not renderer) {
+            throw RunError {
+                .reason = RunError::Reason::CouldNotCreateRenderer,
+                .description = SDL_GetError(),
+            };
+        }
 
-    //     game.init(io);
+        bool is_vsync = SDL_SetRenderVSync(renderer, 1);
 
-    //     SDL_Event event;
-    //     usize frame = 0;
-    //     bool perf_overlay = true;
-    //     bool heuristic_rate_lock = true;
-    //     auto target = draw::Image(width / scale, height / scale);
-    //     auto input = rt::input();
-    //     auto rate = rt::refresh_rate_lock();
+        SDL_Texture* texture = nullptr;
+        i32 current_window_width = width;
+        i32 current_window_height = height;
 
-    //     const auto apply_window_size = [&] {
-    //         // We are explicitly using the scaled window size and not the
-    //         // GetWindowSizeInPixels(window:w:h:) call because we do actually want to scale
-    //         // our own pixel scale by the display scale.
-    //         // Effectively the game is always scaled twice on high density displays which will
-    //         // give consistent sizing between devices.
-    //         i32 w, h; SDL_GetWindowSize(window, &w, &h);
-    //         resize_texture(w, h);
-    //         target.resize(w / scale, h / scale);
-    //     };
+        /// Reallocates the texture to the FULL window resolution for the CRT overlay
+        auto const resize_texture = [&texture, renderer, &current_window_width, &current_window_height] (i32 w, i32 h) -> void {
+            if (texture) {
+                SDL_DestroyTexture(texture);
+            }
+            texture = SDL_CreateTexture(
+                renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h
+            );
+            if (not texture) {
+                throw RunError {
+                    RunError::Reason::CouldNotCreateTexture,
+                    SDL_GetError(),
+                };
+            }
+            SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+            current_window_width = w;
+            current_window_height = h;
+        };
+        resize_texture(width, height);
 
-    //     while (true) {
-    //         while (SDL_PollEvent(&event)) {
-    //             switch (event.type) {
-    //                 case SDL_EVENT_QUIT: goto end;
-    //                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: apply_window_size(); break;
-    //                 default: break;
-    //             }
-    //         }
+        SDL_AudioSpec audio_spec = {
+            .format = SDL_AUDIO_F32,
+            .channels = 1,
+            .freq = 48000
+        };
+        auto audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, nullptr, nullptr);
+        if (audio_stream) SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(audio_stream));
 
-    //         // Ensure stable 60hz.
-    //         rate.lap();
+        SoundStage sound_stage;
 
-    //         const auto draw_perf_overlay = [&] {
-    //             std::stringstream out;
-    //             out << "Assumed rate: ";
-    //             if (rate.common_rate) out << *rate.common_rate; else out << "Unknown";
-    //             out << std::endl
-    //                 << "Estimated rate: " << rate.estimated_hertz << std::endl
-    //                 << "Average ms: " << rate.estimated_millis << std::endl
-    //                 << "Vsync status: " << (is_vsync ? "Enabled" : "Disabled") << std::endl
-    //                 << "Heuristic lock status: " << (heuristic_rate_lock ? "Enabled" : "Disabled") << std::endl
-    //                 << "Scale: " << scale << 'x' << std::endl
-    //                 << "Resolution: " << target.width() << 'x' << target.height() << std::endl;
+        ScopeExit scope_exit = [&] {
+            game.deinit(io);
+            Io::unsafe_pop_threadlocal_io();
+            if (audio_stream) SDL_DestroyAudioStream(audio_stream);
+            SDL_DestroyTexture(texture);
+            SDL_DestroyRenderer(renderer);
+            SDL_DestroyWindow(window);
+            SDL_Quit();
+            is_running.store(false);
+        };
 
-    //             draw::MultilineText text { out.str(), font::mine() };
-    //             target | draw::draw(text, target.width() - text.width() - 8, 8);
-    //         };
+        game.init(io);
 
-    //         rate.sync(frame, heuristic_rate_lock ? 60 : 0, [&] {
-    //             input.poll();
+        SDL_Event event;
+        usize frame = 0;
+        bool perf_overlay = false;
+        bool heuristic_rate_lock = true;
+        auto target = draw::Image(width / scale, height / scale);
+        auto input = rt::input(scale);
+        auto rate = rt::refresh_rate_lock();
 
-    //             { // Process runtime specific debug options.
-    //                 if (input.key_pressed(Key::Num0)) {
-    //                     is_vsync = !is_vsync;
-    //                     SDL_SetRenderVSync(renderer, is_vsync);
-    //                 }
-    //                 if (input.key_pressed(Key::Num8)) heuristic_rate_lock = !heuristic_rate_lock;
-    //                 if (input.key_pressed(Key::Num9)) perf_overlay = !perf_overlay;
+        const auto apply_window_size = [&] (bool autoscale = false) {
+            i32 w, h; SDL_GetWindowSize(window, &w, &h);
 
-    //                 if (bool p = input.key_pressed(Key::Plus), m = input.key_pressed(Key::Minus); p or m) {
-    //                     if (p) scale = std::min(8, scale + 1);
-    //                     if (m) scale = std::max(1, scale - 1);
-    //                     target | draw::clear();
-    //                     apply_window_size();
-    //                 }
+            if (autoscale) {
+                i32 scale_x = w / base_width;
+                i32 scale_y = h / base_height;
+                scale = std::max(1, std::min(scale_x, scale_y));
+            }
 
-    //                 #ifdef _MSC_VER // Fullscreen button for a funny operating system.
-    //                 if (input.key_pressed(Key::F1)) SDL_SetWindowFullscreen(window, true);
-    //                 #endif
-    //             }
+            resize_texture(w, h);
+            target.resize(w / scale, h / scale);
+            input.rescale(scale);
+        };
 
-    //             game.update(io, sound_context, input);
-    //         });
-    //         game.draw(io, input, target);
-    //         if (perf_overlay) draw_perf_overlay();
+        while (true) {
+            while (SDL_PollEvent(&event)) {
+                switch (event.type) {
+                    case SDL_EVENT_QUIT:
+                        goto end;
+                    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: apply_window_size(autoscale); break;
+                    default: break;
+                }
+            }
 
-    //         SDL_RenderClear(renderer);
+            rate.lap();
 
-    //         auto crt_target = draw::Image(width, height);
-    //         crt_target | draw::draw_threaded(
-    //             target
-    //                 | draw::as_ref()
-    //                 | draw::crt_effect(scale)
-    //         );
+            const auto draw_perf_overlay = [&] {
+                auto overlay = std::format(
+                    "Assumed rate: {}\n"
+                    "Estimated rate: {}\n"
+                    "Average ms: {:.4f}\n"
+                    "VSync status: {}\n"
+                    "Heuristic lock status: {}\n"
+                    "Scale: {}x\n"
+                    "Resolution: {}x{}\n",
+                    rate.common_rate ? std::to_string(*rate.common_rate) : "Unknown",
+                    rate.estimated_hertz,
+                    rate.estimated_millis,
+                    is_vsync ? "Enabled" : "Disabled",
+                    heuristic_rate_lock ? "Enabled" : "Disabled",
+                    scale,
+                    target.width(), target.height()
+                );
 
-    //         SDL_UpdateTexture(texture, nullptr, crt_target.raw(), u16(crt_target.width() * sizeof(draw::Color)));
+                draw::MultilineText text { overlay, font::mine() };
+                target | draw::draw(text, target.width() - text.width() - 8, 8);
+            };
 
-    //         if (not SDL_RenderTexture(renderer, texture, nullptr, nullptr)) {
-    //             throw RunError {
-    //                 RunError::Reason::CouldNotRenderTexture,
-    //                 SDL_GetError(),
-    //             };
-    //         }
+            rate.sync(frame, heuristic_rate_lock ? 60 : 0, [&] {
+                input.poll();
 
-    //         if (not SDL_RenderPresent(renderer)) {
-    //             throw RunError {
-    //                 RunError::Reason::CouldNotPresentToWindow,
-    //                 SDL_GetError(),
-    //             };
-    //         }
+                {
+                    if (input.key_pressed(Key::Num0)) {
+                        is_vsync = !is_vsync;
+                        SDL_SetRenderVSync(renderer, is_vsync);
+                    }
+                    if (input.key_pressed(Key::Num8)) heuristic_rate_lock = !heuristic_rate_lock;
+                    if (input.key_pressed(Key::Num9)) perf_overlay = !perf_overlay;
 
-    //         frame += 1;
-    //     }
-    // end:
-    // }
+                    if (bool p = input.key_pressed(Key::Plus), m = input.key_pressed(Key::Minus); p or m) {
+                        if (p) scale = std::min(8, scale + 1);
+                        if (m) scale = std::max(1, scale - 1);
+                        target | draw::clear();
+                        apply_window_size();
+                    }
 
-    // /// Runs a game in the environment, applying a CRT effect.
-    // ///
-    // /// This method was moved from Game into an environment message.
-    // /// A game cannot run itself, it is run by the platform it's on
-    // /// and can be run in many ways, this is just one implementation.
-    // ///
-    // /// This overload uses the default window size of 800x600.
-    // inline void run_crt(Instance auto& game, char const* title, i32 scale = 1) {
-    //     run(game, title, 800, 600, scale);
-    // }
+#ifdef _MSC_VER
+                    if (
+                        input.key_pressed(Key::F11)
+                            or
+                        input.key_held(Key::Option) and input.key_pressed(Key::Enter)
+                    ) SDL_SetWindowFullscreen(window, true);
+#endif
+                    if (audio_stream and input.key_pressed(Key::F2)) {
+                        if (SDL_GetAudioStreamGain(audio_stream) == 0.f) {
+                            SDL_SetAudioStreamGain(audio_stream, 1.f);
+                        } else {
+                            SDL_SetAudioStreamGain(audio_stream, 0.f);
+                        }
+                    }
+                }
+
+                game.update(io, input, sound_stage);
+
+                if (audio_stream) {
+                    i32 available_audio_samples = SDL_GetAudioStreamAvailable(audio_stream) / sizeof(f32);
+                    i32 samples_to_push = 4800 - available_audio_samples;
+
+                    if (samples_to_push > 0) {
+                        samples_to_push = std::min(samples_to_push, 4800);
+                        auto output = sound_stage.finalize();
+                        SDL_PutAudioStreamData(audio_stream, output.data, samples_to_push * sizeof(f32));
+                        sound_stage.advance_time_and_clear_buffer(samples_to_push);
+                    }
+                }
+            });
+
+            game.draw(io, input, target);
+            if (perf_overlay) draw_perf_overlay();
+
+            detail::main_executor().drain();
+            io.poll_async();
+
+            SDL_RenderClear(renderer);
+
+            // Execute the CRT threaded mapping
+            auto crt_target = draw::Image(current_window_width, current_window_height);
+            crt_target | draw::draw_threaded(
+                target
+                    | draw::as_ref()
+                    | draw::crt_effect(scale)
+            );
+
+            SDL_UpdateTexture(texture, nullptr, crt_target.raw(), u16(crt_target.width() * sizeof(draw::Color)));
+
+            if (not SDL_RenderTexture(renderer, texture, nullptr, nullptr)) {
+                throw RunError {
+                    RunError::Reason::CouldNotRenderTexture,
+                    SDL_GetError(),
+                };
+            }
+
+            if (not SDL_RenderPresent(renderer)) {
+                throw RunError {
+                    RunError::Reason::CouldNotPresentToWindow,
+                    SDL_GetError(),
+                };
+            }
+
+            frame += 1;
+        }
+    end:
+        ;
+    }
+
+    /// Runs a game in the environment, applying a CRT effect.
+    ///
+    /// This overload uses the default window size of 800x600.
+    inline void run_crt(Instance auto& game, char const* title, i32 scale = 1, bool autoscale = true) {
+        run_crt(game, title, 800, 600, scale, autoscale);
+    }
+
+#ifdef USE_OPENGL_CRT_EFFECT
+    /// Runs a game in the environment, applying a CRT effect via hardware-accelerated OpenGL 4.1.
+    ///
+    /// This function is AI generated from the software version, but it actually works without issue.
+    static void run_crt_gl(Instance auto game, char const* title, i32 width, i32 height, i32 scale, draw::cfg::CrtConfig cfg = {}, bool autoscale = true) {
+        static std::atomic<bool> is_running = false;
+
+        rt::detail::main_executor();
+
+        SdlIo io;
+        Io::unsafe_push_threadlocal_io(&io);
+
+        const i32 base_width = width / scale;
+        const i32 base_height = height / scale;
+
+        if (is_running.load()) throw RunError { RunError::Reason::AlreadyRunning };
+        is_running.store(true);
+
+        if (not SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD)) {
+            throw RunError { RunError::Reason::CouldNotInitializeSdl, SDL_GetError() };
+        }
+
+        auto basePath = SDL_GetBasePath();
+        if (basePath) std::filesystem::current_path(basePath);
+
+        // Request OpenGL 4.1 Core Profile (Required for macOS compatibility)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+
+        auto window = SDL_CreateWindow(
+            title, width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_OPENGL
+        );
+        if (not window) throw RunError { RunError::Reason::CouldNotCreateWindow, SDL_GetError() };
+
+        SDL_SetWindowMinimumSize(window, width, height);
+        SDL_HideCursor();
+        SDL_SyncWindow(window);
+
+        auto gl_context = SDL_GL_CreateContext(window);
+        if (not gl_context) throw RunError { RunError::Reason::CouldNotCreateRenderer, SDL_GetError() };
+
+        bool is_vsync = SDL_GL_SetSwapInterval(1);
+
+        // Load necessary OpenGL >= 2.0 functions
+        auto glCreateShader = (GLuint (*)(GLenum)) SDL_GL_GetProcAddress("glCreateShader");
+        auto glShaderSource = (void (*)(GLuint, GLsizei, const GLchar**, const GLint*)) SDL_GL_GetProcAddress("glShaderSource");
+        auto glCompileShader = (void (*)(GLuint)) SDL_GL_GetProcAddress("glCompileShader");
+        auto glGetShaderiv = (void (*)(GLuint, GLenum, GLint*)) SDL_GL_GetProcAddress("glGetShaderiv");
+        auto glGetShaderInfoLog = (void (*)(GLuint, GLsizei, GLsizei*, GLchar*)) SDL_GL_GetProcAddress("glGetShaderInfoLog");
+        auto glCreateProgram = (GLuint (*)()) SDL_GL_GetProcAddress("glCreateProgram");
+        auto glAttachShader = (void (*)(GLuint, GLuint)) SDL_GL_GetProcAddress("glAttachShader");
+        auto glLinkProgram = (void (*)(GLuint)) SDL_GL_GetProcAddress("glLinkProgram");
+        auto glGetProgramiv = (void (*)(GLuint, GLenum, GLint*)) SDL_GL_GetProcAddress("glGetProgramiv");
+        auto glUseProgram = (void (*)(GLuint)) SDL_GL_GetProcAddress("glUseProgram");
+        auto glGenVertexArrays = (void (*)(GLsizei, GLuint*)) SDL_GL_GetProcAddress("glGenVertexArrays");
+        auto glBindVertexArray = (void (*)(GLuint)) SDL_GL_GetProcAddress("glBindVertexArray");
+        auto glGenBuffers = (void (*)(GLsizei, GLuint*)) SDL_GL_GetProcAddress("glGenBuffers");
+        auto glBindBuffer = (void (*)(GLenum, GLuint)) SDL_GL_GetProcAddress("glBindBuffer");
+        auto glBufferData = (void (*)(GLenum, GLsizeiptr, const void*, GLenum)) SDL_GL_GetProcAddress("glBufferData");
+        auto glVertexAttribPointer = (void (*)(GLuint, GLint, GLenum, GLboolean, GLsizei, const void*)) SDL_GL_GetProcAddress("glVertexAttribPointer");
+        auto glEnableVertexAttribArray = (void (*)(GLuint)) SDL_GL_GetProcAddress("glEnableVertexAttribArray");
+        auto glGetUniformLocation = (GLint (*)(GLuint, const GLchar*)) SDL_GL_GetProcAddress("glGetUniformLocation");
+        auto glUniform1f = (void (*)(GLint, GLfloat)) SDL_GL_GetProcAddress("glUniform1f");
+        auto glUniform2f = (void (*)(GLint, GLfloat, GLfloat)) SDL_GL_GetProcAddress("glUniform2f");
+        auto glActiveTexture = (void (*)(GLenum)) SDL_GL_GetProcAddress("glActiveTexture");
+
+        // Compile Shader Helper
+        auto compile_shader = [&](GLenum type, const char* src) -> GLuint {
+            GLuint shader = glCreateShader(type);
+            glShaderSource(shader, 1, &src, nullptr);
+            glCompileShader(shader);
+            GLint success;
+            glGetShaderiv(shader, 0x8B81 /* GL_COMPILE_STATUS */, &success);
+            if (!success) {
+                char info[512];
+                glGetShaderInfoLog(shader, 512, nullptr, info);
+                throw std::runtime_error(std::string("Shader Compilation Failed:\n") + info);
+            }
+            return shader;
+        };
+
+        const char* vertex_source = R"glsl(
+            #version 410 core
+            layout(location = 0) in vec2 aPos;
+            layout(location = 1) in vec2 aTexCoord;
+            out vec2 TexCoord;
+            void main() {
+                gl_Position = vec4(aPos, 0.0, 1.0);
+                TexCoord = aTexCoord;
+            }
+        )glsl";
+
+        std::string fragment_source = std::format(R"glsl(
+            #version 410 core
+            in vec2 TexCoord;
+            out vec4 FragColor;
+
+            uniform sampler2D screenTexture;
+            uniform vec2 texSize;
+            uniform vec2 outSize;
+            uniform float scale;
+
+            const float input_gamma = {:f};
+            const float output_gamma = {:f};
+            const float phosphor = {:f};
+            const float color_boost = {:f};
+            const float red_boost = {:f};
+            const float green_boost = {:f};
+            const float blue_boost = {:f};
+            const float scanlines_strength = {:f};
+            const float beam_min_width = {:f};
+            const float beam_max_width = {:f};
+            const float anti_ringing = {:f};
+
+            vec3 gamma_in(vec3 c) {{ return pow(c, vec3(input_gamma)); }}
+            vec3 gamma_out(vec3 c) {{ return pow(c, vec3(1.0 / output_gamma)); }}
+
+            vec3 sample_tex(vec2 pos) {{
+                vec2 uv_fetch = (clamp(floor(pos), vec2(0.0), texSize - 1.0) + 0.5) / texSize;
+                return gamma_in(texture(screenTexture, uv_fetch).rgb);
+            }}
+
+            vec3 cubic_vec(vec3 A, vec3 B, vec3 C, vec3 D, float t) {{
+                vec3 a = -0.5 * A + 1.5 * B - 1.5 * C + 0.5 * D;
+                vec3 b = A - 2.5 * B + 2.0 * C - 0.5 * D;
+                vec3 c = -0.5 * A + 0.5 * C;
+                vec3 d = B;
+                return ((a * t + b) * t + c) * t + d;
+            }}
+
+            void main() {{
+                // OpenGL coords are bottom-up, invert Y to match SDL pixel space
+                vec2 fragCoord = vec2(gl_FragCoord.x, outSize.y - gl_FragCoord.y);
+                vec2 f = fragCoord / scale;
+
+                float fractx = fract(f.x);
+                float fracty = fract(f.y);
+                vec2 ixiy = floor(f);
+
+                vec3 c00 = sample_tex(ixiy + vec2(-1.0, -1.0));
+                vec3 c01 = sample_tex(ixiy + vec2( 0.0, -1.0));
+                vec3 c02 = sample_tex(ixiy + vec2( 1.0, -1.0));
+                vec3 c03 = sample_tex(ixiy + vec2( 2.0, -1.0));
+
+                vec3 c10 = sample_tex(ixiy + vec2(-1.0,  0.0));
+                vec3 c11 = sample_tex(ixiy + vec2( 0.0,  0.0));
+                vec3 c12 = sample_tex(ixiy + vec2( 1.0,  0.0));
+                vec3 c13 = sample_tex(ixiy + vec2( 2.0,  0.0));
+
+                vec3 min_samp = min(min(c01, c11), min(c02, c12));
+                vec3 max_samp = max(max(c01, c11), max(c02, c12));
+
+                vec3 aux0 = cubic_vec(c00, c01, c02, c03, fractx);
+                vec3 color0 = mix(aux0, clamp(aux0, min_samp, max_samp), anti_ringing);
+
+                vec3 aux1 = cubic_vec(c10, c11, c12, c13, fractx);
+                vec3 color1 = mix(aux1, clamp(aux1, min_samp, max_samp), anti_ringing);
+
+                vec3 lum0 = beam_min_width + (beam_max_width - beam_min_width) * color0;
+                vec3 lum1 = beam_min_width + (beam_max_width - beam_min_width) * color1;
+
+                vec3 d0 = clamp(fracty / (lum0 + 1e-7), 0.0, 1.0);
+                vec3 d1 = clamp((1.0 - fracty) / (lum1 + 1e-7), 0.0, 1.0);
+
+                d0 = exp(-10.0 * scanlines_strength * d0 * d0);
+                d1 = exp(-10.0 * scanlines_strength * d1 * d1);
+
+                vec3 color = clamp(color0 * d0 + color1 * d1, 0.0, 1.0);
+                color *= color_boost * vec3(red_boost, green_boost, blue_boost);
+
+                if (phosphor > 0.0) {{
+                    int mod_val = int(fragCoord.x + fragCoord.y) & 1;
+                    vec3 mask = mod_val != 0 ? vec3(0.7, 1.0, 0.7) : vec3(1.0, 0.7, 1.0);
+                    color *= mix(vec3(1.0), mask, phosphor);
+                }}
+
+                FragColor = vec4(gamma_out(color), 1.0);
+            }}
+        )glsl",
+        cfg.input_gamma, cfg.output_gamma, cfg.phosphor, cfg.color_boost, cfg.red_boost,
+        cfg.green_boost, cfg.blue_boost, cfg.scanlines_strength, cfg.beam_min_width,
+        cfg.beam_max_width, cfg.anti_ringing);
+
+        GLuint shader_program = glCreateProgram();
+        GLuint vs = compile_shader(0x8B31 /* GL_VERTEX_SHADER */, vertex_source);
+        GLuint fs = compile_shader(0x8B30 /* GL_FRAGMENT_SHADER */, fragment_source.c_str());
+        glAttachShader(shader_program, vs);
+        glAttachShader(shader_program, fs);
+        glLinkProgram(shader_program);
+
+        GLint u_texSize = glGetUniformLocation(shader_program, "texSize");
+        GLint u_outSize = glGetUniformLocation(shader_program, "outSize");
+        GLint u_scale = glGetUniformLocation(shader_program, "scale");
+
+        // Setup Fullscreen Quad
+        float quad_vertices[] = {
+            // Pos        // TexCoord (Inverted Y to match standard texture upload)
+            -1.0f,  1.0f, 0.0f, 0.0f,
+            -1.0f, -1.0f, 0.0f, 1.0f,
+            1.0f,  1.0f, 1.0f, 0.0f,
+            1.0f, -1.0f, 1.0f, 1.0f,
+        };
+
+        GLuint vao, vbo;
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(0x8892 /* GL_ARRAY_BUFFER */, vbo);
+        glBufferData(0x8892 /* GL_ARRAY_BUFFER */, sizeof(quad_vertices), quad_vertices, 0x88E4 /* GL_STATIC_DRAW */);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, 0x1406 /* GL_FLOAT */, 0 /* GL_FALSE */, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, 0x1406 /* GL_FLOAT */, 0 /* GL_FALSE */, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+        // Setup Texture
+        GLuint texture_id;
+        glGenTextures(1, &texture_id);
+        glBindTexture(0x0DE1 /* GL_TEXTURE_2D */, texture_id);
+        glTexParameteri(0x0DE1, 0x2801 /* GL_TEXTURE_MIN_FILTER */, 0x2600 /* GL_NEAREST */);
+        glTexParameteri(0x0DE1, 0x2800 /* GL_TEXTURE_MAG_FILTER */, 0x2600 /* GL_NEAREST */);
+
+        SDL_AudioSpec audio_spec = { .format = SDL_AUDIO_F32, .channels = 1, .freq = 48000 };
+        auto audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, nullptr, nullptr);
+        if (audio_stream) SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(audio_stream));
+
+        SoundStage sound_stage;
+
+        ScopeExit scope_exit = [&] {
+            game.deinit(io);
+            Io::unsafe_pop_threadlocal_io();
+            if (audio_stream) SDL_DestroyAudioStream(audio_stream);
+            SDL_GL_DestroyContext(gl_context);
+            SDL_DestroyWindow(window);
+            SDL_Quit();
+            is_running.store(false);
+        };
+
+        game.init(io);
+
+        SDL_Event event;
+        usize frame = 0;
+        bool perf_overlay = false;
+        bool heuristic_rate_lock = true;
+        auto target = draw::Image(width / scale, height / scale);
+        auto input = rt::input(scale);
+        auto rate = rt::refresh_rate_lock();
+
+        i32 current_window_width = width;
+        i32 current_window_height = height;
+
+        const auto apply_window_size = [&] (bool autoscale = false) {
+            SDL_GetWindowSizeInPixels(window, &current_window_width, &current_window_height);
+
+            if (autoscale) {
+                i32 w, h; SDL_GetWindowSizeInPixels(window, &w, &h);
+                scale = std::max(1, std::min(w / base_width, h / base_height));
+            }
+
+            target.resize(current_window_width / scale, current_window_height / scale);
+            input.rescale(scale / 2);
+            glViewport(0, 0, current_window_width, current_window_height);
+
+            // Re-allocate texture backing store since target size might have changed
+            glBindTexture(0x0DE1 /* GL_TEXTURE_2D */, texture_id);
+            glTexImage2D(0x0DE1, 0, 0x1908 /* GL_RGBA */, target.width(), target.height(), 0, 0x1908 /* GL_RGBA */, 0x1401 /* GL_UNSIGNED_BYTE */, nullptr);
+        };
+        apply_window_size(autoscale); // Initial allocation
+
+        while (true) {
+            while (SDL_PollEvent(&event)) {
+                switch (event.type) {
+                    case SDL_EVENT_QUIT:
+                        goto end;
+                    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: apply_window_size(autoscale); break;
+                    default: break;
+                }
+            }
+
+            rate.lap();
+
+            rate.sync(frame, heuristic_rate_lock ? 60 : 0, [&] {
+                input.poll();
+
+                if (input.key_pressed(Key::Num0)) {
+                    is_vsync = !is_vsync;
+                    SDL_GL_SetSwapInterval(is_vsync ? 1 : 0);
+                }
+                if (input.key_pressed(Key::Num8)) heuristic_rate_lock = !heuristic_rate_lock;
+                if (input.key_pressed(Key::Num9)) perf_overlay = !perf_overlay;
+
+                if (bool p = input.key_pressed(Key::Plus), m = input.key_pressed(Key::Minus); p or m) {
+                    if (p) scale = std::min(8, scale + 1);
+                    if (m) scale = std::max(1, scale - 1);
+                    target | draw::clear();
+                    apply_window_size();
+                }
+
+#ifdef _MSC_VER
+                if (input.key_pressed(Key::F11) or (input.key_held(Key::Option) and input.key_pressed(Key::Enter)))
+                    SDL_SetWindowFullscreen(window, true);
+#endif
+                if (audio_stream and input.key_pressed(Key::F2)) {
+                    SDL_SetAudioStreamGain(audio_stream, SDL_GetAudioStreamGain(audio_stream) == 0.f ? 1.f : 0.f);
+                }
+
+                game.update(io, input, sound_stage);
+
+                if (audio_stream) {
+                    i32 available_audio_samples = SDL_GetAudioStreamAvailable(audio_stream) / sizeof(f32);
+                    i32 samples_to_push = std::min(4800 - available_audio_samples, 4800);
+                    if (samples_to_push > 0) {
+                        auto output = sound_stage.finalize();
+                        SDL_PutAudioStreamData(audio_stream, output.data, samples_to_push * sizeof(f32));
+                        sound_stage.advance_time_and_clear_buffer(samples_to_push);
+                    }
+                }
+            });
+
+            game.draw(io, input, target);
+
+            if (perf_overlay) {
+                auto overlay = std::format(
+                    "Assumed rate: {}\nEstimated rate: {}\nAverage ms: {:.4f}\nVSync status: {}\nHeuristic lock status: {}\nScale: {}x\nResolution: {}x{}\n",
+                    rate.common_rate ? std::to_string(*rate.common_rate) : "Unknown", rate.estimated_hertz, rate.estimated_millis,
+                    is_vsync ? "Enabled" : "Disabled", heuristic_rate_lock ? "Enabled" : "Disabled", scale, target.width(), target.height()
+                );
+                draw::MultilineText text { overlay, font::mine() };
+                target | draw::draw(text, target.width() - text.width() - 8, 8);
+            }
+
+            detail::main_executor().drain();
+            io.poll_async();
+
+            // OpenGL Hardware Rendering
+            glClear(0x00004000 /* GL_COLOR_BUFFER_BIT */);
+
+            glActiveTexture(0x84C0 /* GL_TEXTURE0 */);
+            glBindTexture(0x0DE1 /* GL_TEXTURE_2D */, texture_id);
+            // SDL ABGR8888 struct aligns safely with GL_RGBA on little-endian hardware
+            glTexSubImage2D(0x0DE1, 0, 0, 0, target.width(), target.height(), 0x1908 /* GL_RGBA */, 0x1401 /* GL_UNSIGNED_BYTE */, target.raw());
+
+            glUseProgram(shader_program);
+            glUniform2f(u_texSize, (float)target.width(), (float)target.height());
+            glUniform2f(u_outSize, (float)current_window_width, (float)current_window_height);
+            glUniform1f(u_scale, (float)scale);
+
+            glBindVertexArray(vao);
+            glDrawArrays(0x0005 /* GL_TRIANGLE_STRIP */, 0, 4);
+
+            SDL_GL_SwapWindow(window);
+            frame += 1;
+        }
+    end:
+        ;
+    }
+#endif
 }

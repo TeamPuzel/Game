@@ -2,6 +2,12 @@
 
 https://github.com/TeamPuzel/Game
 
+## The two binaries
+
+There are two binaries included, the alternative GL version uses a fragment shader to apply a high quality CRT effect
+to the output image. The software version, while capable of this effect, pushes the CPU too hard even if taking
+advantage of all the cores — for this reason the normal binary has the effect disabled.
+
 ## Project structure
 
 - `src` contains the engine.
