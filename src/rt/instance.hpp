@@ -1278,7 +1278,7 @@ namespace rt {
                 // I hate this code.
                 if (audio_stream) {
                     // Find out how many samples SDL currently has queued.
-                    i32 available_audio_samples = SDL_GetAudioStreamAvailable(audio_stream) / sizeof(f32);
+                    i32 available_audio_samples = SDL_GetAudioStreamQueued(audio_stream) / sizeof(f32);
                     // We target keeping exactly 4800 samples queued at all times.
                     i32 samples_to_push = 4800 - available_audio_samples;
 
@@ -1543,7 +1543,7 @@ namespace rt {
                 game.update(io, input, sound_stage);
 
                 if (audio_stream) {
-                    i32 available_audio_samples = SDL_GetAudioStreamAvailable(audio_stream) / sizeof(f32);
+                    i32 available_audio_samples = SDL_GetAudioStreamQueued(audio_stream) / sizeof(f32);
                     i32 samples_to_push = 4800 - available_audio_samples;
 
                     if (samples_to_push > 0) {
@@ -1909,7 +1909,7 @@ namespace rt {
                 game.update(io, input, sound_stage);
 
                 if (audio_stream) {
-                    i32 available_audio_samples = SDL_GetAudioStreamAvailable(audio_stream) / sizeof(f32);
+                    i32 available_audio_samples = SDL_GetAudioStreamQueued(audio_stream) / sizeof(f32);
                     i32 samples_to_push = std::min(4800 - available_audio_samples, 4800);
                     if (samples_to_push > 0) {
                         auto output = sound_stage.finalize();
